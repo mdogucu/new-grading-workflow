@@ -22,7 +22,7 @@ late_ui <- function(id) {
             shiny::div(class = "d-flex gap-2",
               shiny::dateInput(ns("x_date"), "New deadline", width = "160px"),
               shiny::textInput(ns("x_time"), "Time", value = "23:59", width = "100px"))),
-          shiny::textInput(ns("x_note"), "Note (private)", placeholder = "e.g. sick, DSO letter", width = "100%"))),
+          shiny::textInput(ns("x_note"), "Note (private)", placeholder = "e.g. sick, DAO letter", width = "100%"))),
       shiny::actionButton(ns("x_add"), "Add", icon = icon_tag("plus"), class = "btn-primary btn-sm", width = "120px"),
       shiny::hr(),
       shiny::uiOutput(ns("x_list"))),

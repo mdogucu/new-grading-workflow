@@ -30,6 +30,16 @@ regrade window. Each line has a comment explaining it.
 CA/TF who teaches it and grades its section work.
 
 ### calendar.csv — one row per gradable item (homework, section, quiz)
+**You don't have to type most of it.** Admin tab ▸ **Calendar from Canvas** ▸
+Check Canvas reads the assignments you already made in Canvas (named like
+hw09-statistical-inference, sec09-…, quiz11b) and fills in new items, titles,
+week repo names, due dates and Canvas ids, plus a default grading due date
+where it's empty (course.yml `grading_days_homework` / `_section` / `_quiz`
+days after the due date). You see the list of changes before anything is
+written; the old file is kept in config/old/. Canvas wins for due dates and
+ids, so change those in Canvas and check again. Owners, ready-by dates and
+grading due dates you typed are never overwritten.
+
 Quizzes are rows with `type = quiz` (quiz11b = week 11, lecture b). They were
 filled in for every Monday (a) and Wednesday (b) lecture, skipping holidays,
 with student_due = 1:15 pm that day and grading_due = 2 days later. Delete
@@ -189,6 +199,15 @@ If something looks wrong here, fix the input or add an override, then refresh.
 - `github-check.csv` — last "Check GitHub organization" (Students tab):
   who's in the org but not on the list (probably dropped), who hasn't joined.
 - `dismissed-tasks.csv` — My tasks items you dismissed. Delete a row to bring it back.
+
+## repos/ — copies of student repos opened by admins
+Graders' copies live in their own folders (`graders/stat100-grader-<user>/repos/`).
+Each copy holds just the graded commit. Safe to delete after grades are
+released; the dashboard downloads again if needed.
+**End of term:** remove CAs from the Drive shares (docs/sharing-folders.md).
+Note that files a CA creates in a folder you own are owned by *them* in Google
+Drive, so also delete their `repos/` folders (or move grader folders to a
+Shared Drive, where the Shared Drive owns everything).
 
 ## logs/
 - `action-log.csv` — time, user, action, details. Includes blocked attempts.

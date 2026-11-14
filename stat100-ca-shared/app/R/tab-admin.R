@@ -20,7 +20,7 @@ admin_ui <- function(id) {
         shiny::uiOutput(ns("inputs")),
         shiny::actionButton(ns("refresh"), "Refresh student list", class = "btn-primary")),
       bslib::card(bslib::card_header(icon_tag("share"), " Publish course info"),
-        shiny::p("Copies calendar, sections and staff (no emails, no COI) to the shared folder so CAs see the latest."),
+        shiny::p("Copies calendar, sections and staff (with staff emails, but no student data or COI) to the shared folder so CAs see the latest."),
         shiny::uiOutput(ns("published")),
         shiny::actionButton(ns("publish"), "Publish course info", class = "btn-primary")),
       bslib::card(bslib::card_header(icon_tag("folder-plus"), " Grader folders"),
@@ -28,6 +28,12 @@ admin_ui <- function(id) {
         shiny::uiOutput(ns("folders")),
         shiny::actionButton(ns("make_folders"), "Create missing folders", class = "btn-primary"))
     ),
+    bslib::card(bslib::card_header(icon_tag("calendar-check"), " Calendar from Canvas"),
+      shiny::p(class = "small text-muted", "Reads the assignments already in Canvas (names like hw09-…, sec09-…, quiz11b) and fills",
+               "calendar.csv: new items, due dates, Canvas ids, and a default grading due date where it's empty.",
+               "Nothing changes until you click Apply. Logic: R/16-canvas-sync.R."),
+      shiny::actionButton(ns("cal_check"), "Check Canvas", icon = icon_tag("cloud-download"), class = "btn-outline-primary btn-sm", width = "160px"),
+      shiny::uiOutput(ns("cal_plan"))),
     bslib::card(bslib::card_header(icon_tag("pencil-square"), " Weekly grading"),
       bslib::layout_columns(col_widths = c(4, 8),
         shiny::div(
@@ -131,6 +137,28 @@ admin_server <- function(id, user, refresh) {
             shiny::tags$tbody(lapply(seq_len(nrow(odd)), function(i) shiny::tags$tr(lapply(odd[i, ], function(v) shiny::tags$td(v %||% "")))))))
       )
     })
+
+    # --- calendar from Canvas ---
+    plan <- shiny::reactiveVal(NULL)
+    shiny::observeEvent(input$cal_check, {
+      p <- tryCatch(shiny::withProgress(message = "Reading Canvas…", value = 0.5, calendar_sync_plan()), error = function(e) e)
+      if (inherits(p, "error")) { shiny::showNotification(conditionMessage(p), type = "error", duration = NULL); plan(NULL) } else plan(p)
+    })
+    output$cal_plan <- shiny::renderUI({
+      p <- plan(); if (is.null(p)) return(NULL)
+      ch <- p$changes
+      shiny::tagList(shiny::hr(),
+        if (is.null(ch)) shiny::p(class = "text-success", "calendar.csv already matches Canvas.") else shiny::tagList(
+          shiny::tags$table(class = "table table-sm small",
+            shiny::tags$thead(shiny::tags$tr(lapply(c("Item", "Change", "Before", "After"), shiny::tags$th))),
+            shiny::tags$tbody(lapply(seq_len(nrow(ch)), function(i) shiny::tags$tr(lapply(ch[i, ], shiny::tags$td))))),
+          shiny::actionButton(ns("cal_apply"), sprintf("Apply %d change(s) to calendar.csv", nrow(ch)), class = "btn-primary btn-sm")),
+        if (length(p$skipped)) shiny::p(class = "small text-muted mt-2", sprintf("%d earlier assignment(s) skipped (before first_week_* in course.yml).", length(p$skipped))),
+        if (length(p$unused)) shiny::tags$details(class = "small mt-2",
+          shiny::tags$summary(sprintf("%d Canvas assignment(s) not used (names don't start with hw/sec/quiz)", length(p$unused))),
+          paste(p$unused, collapse = "; ")))
+    })
+    shiny::observeEvent(input$cal_apply, { run("Calendar updated from Canvas", apply_calendar_sync(plan(), user)); plan(NULL) })
 
     shiny::observeEvent(input$refresh, run("Refresh student list", refresh_students(user)))
     shiny::observeEvent(input$publish, run("Publish course info", publish_course_info(user)))

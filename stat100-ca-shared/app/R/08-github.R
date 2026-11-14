@@ -9,10 +9,14 @@
 # (compute_snapshot): teaching-team and bot commits are ignored; on time =
 # last commit before the deadline; late homework is reviewed by an admin.
 #
-# Local copies (on graders' computers, NEVER in Google Drive):
-#   ~/stat100-grading-repos/<week repo>/<homework|section>/<student repo>/
-#   checked out at exactly the graded commit. Homework and section live in
-#   separate copies because they're graded at different commits.
+# Copies of student repos live in GOOGLE DRIVE, not loose on the computer,
+# so that removing someone's Drive access at the end of the term also removes
+# their access to students' work:
+#   CA:     <their grader folder>/repos/<week repo>/<homework|section>/<student repo>/
+#   admins: admin/repos/<week repo>/<homework|section>/<student repo>/
+# Each copy holds only the graded commit (a "shallow" copy, no history), to
+# keep Drive light. Homework and section are separate copies because they're
+# graded at different commits.
 # ---------------------------------------------------------------------------
 
 student_repo <- function(week_repo, github) paste0(week_repo, "-", github)
@@ -21,9 +25,13 @@ student_repo <- function(week_repo, github) paste0(week_repo, "-", github)
 # to a local folder that contains copies of the repos.
 repo_source <- function() { s <- Sys.getenv("STAT100_REPO_SOURCE"); if (nzchar(s)) s else "github" }
 
-local_repos_dir <- function() {
+local_repos_dir <- function(user = current_user()) {
   d <- Sys.getenv("STAT100_REPOS_DIR")
-  if (nzchar(d)) d else file.path(path.expand("~"), "stat100-grading-repos")
+  if (nzchar(d)) return(d)
+  if (has_admin_folder()) return(admin_path("repos"))
+  g <- grader_dir(user$username %||% "")
+  if (!is.na(g)) return(file.path(g, "repos"))
+  stop("Can't find your grading folder in Google Drive, so student work can't be downloaded. See the Setup tab.")
 }
 
 github_url <- function(repo, sha = NULL, path = NULL) {
@@ -84,11 +92,16 @@ checkout_copy <- function(repo, sha, dest, source = repo_source()) {
   url <- if (identical(source, "github"))
     sprintf("https://github.com/%s/%s.git", read_course()$github_org, repo) else file.path(source, repo)
   if (!dir.exists(file.path(dest, ".git"))) {
-    dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
-    git("clone", "--quiet", shQuote(url), shQuote(dest))
+    dir.create(dest, recursive = TRUE, showWarnings = FALSE)
+    git("-C", shQuote(dest), "init", "--quiet")
+    git("-C", shQuote(dest), "remote", "add", "origin", shQuote(url))
   }
   have <- tryCatch(git("-C", shQuote(dest), "cat-file", "-e", paste0(sha, "^{commit}")), error = function(e) NULL)
-  if (is.null(have)) git("-C", shQuote(dest), "fetch", "--quiet", "origin")
+  if (is.null(have)) {
+    # just the graded commit, no history (GitHub allows fetching a commit by its id)
+    ok <- tryCatch({ git("-C", shQuote(dest), "fetch", "--quiet", "--depth", "1", "origin", sha); TRUE }, error = function(e) FALSE)
+    if (!ok) git("-C", shQuote(dest), "fetch", "--quiet", "origin")       # fallback: everything
+  }
   git("-C", shQuote(dest), "checkout", "--quiet", "--force", sha)
   dest
 }

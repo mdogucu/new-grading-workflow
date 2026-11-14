@@ -98,3 +98,19 @@ a:focus-visible, button:focus-visible { outline: 3px solid #005FCC; outline-offs
 /* keep the menu on one line */
 .navbar .nav-link { padding-left: .5rem !important; padding-right: .5rem !important; font-size: .95rem; }
 @media (max-width: 1700px) { .brand-text { display: none; } .user-badge .role-chip { display: none; } }
+
+/* calendar */
+.cal-row { display: flex; align-items: center; gap: 1rem; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: .55rem .9rem; margin: .4rem 0; }
+.cal-date { min-width: 6.5rem; font-weight: 700; }
+.cal-time { font-weight: 400; font-size: .8rem; color: var(--muted); }
+.cal-what { flex: 1; }
+.cal-title { font-weight: 700; }
+.cal-detail { color: var(--muted); font-size: .9rem; }
+.cal-done .cal-title, .cal-done .cal-date { text-decoration: line-through; color: var(--muted); }
+.cal-done { background: #f6faf6; }
+.cal-overdue { border-left: 6px solid var(--crimson); }
+.cal-todo { border-left: 6px solid var(--amber); }
+.cal-coming-up { border-left: 6px solid var(--blue); }
+.cal-not-assigned, .cal-past { opacity: .6; }
+.pill-muted { background: #9aa0a6; }
+.cal-this-week { border-left: 6px solid var(--amber); }

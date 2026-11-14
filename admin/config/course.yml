@@ -21,3 +21,8 @@ section_grade_steps: 10              # section completion is graded in steps of 
 
 # Quizzes
 quiz_grader: "mdogucu"                 # who gets the "Grade quiz" to-dos
+
+# Default grading due dates filled in by "Calendar from Canvas" (days after the student due date)
+grading_days_homework: 3
+grading_days_section: 3
+grading_days_quiz: 3

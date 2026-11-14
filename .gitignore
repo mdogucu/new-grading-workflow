@@ -42,6 +42,7 @@
 /admin/data/
 /admin/logs/
 /admin/examples/
+/admin/repos/
 # conflicts of interest, per-student fixes, extensions/excused, quiz matches
 /admin/config/coi.csv
 /admin/config/student-overrides.csv
@@ -56,6 +57,9 @@
 # (to track them, delete the next two lines)
 /stat100-ca-shared/rubrics/*.csv
 /stat100-ca-shared/rubrics/old/
+# any downloaded student repo, wherever it is (safety net)
+repos/
+week[0-9][0-9]-*/
 # R / RStudio / Mac / secrets
 .Rproj.user/
 .Rhistory

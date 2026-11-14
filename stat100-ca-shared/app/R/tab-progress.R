@@ -49,7 +49,7 @@ progress_server <- function(id, user) {
             }))),
           if (!is.null(behind)) shiny::tags$details(shiny::tags$summary(icon_tag("envelope"), sprintf(" Remind the %d grader(s) who aren't done", nrow(behind))),
             email_panel_ui(ns(paste0("mail_", it)), stats::na.omit(behind$email),
-              fill_template("grading-reminder", list(sender = (user$viewed_by %||% user)$name, item = it,
+              fill_template("grading-reminder", list(sender = user$name, item = it,
                             title = cal$title[match(it, cal$item)] %||% "", due = fmt_due(due))))))
       }))
     })

@@ -5,10 +5,12 @@
 2. Pick the **assignment** (e.g. hw09). The list shows only GitHub usernames.
    Students you've graded drop off the list (tick "Include students I've already
    graded" to go back to one).
-3. The first time you open a student, the dashboard downloads their repo to
-   `~/stat100-grading-repos/` on your computer, at **exactly the version we
-   grade** (the last push before the deadline + late window). Want them all at
-   once? Click **Download all my students' work**.
+3. The first time you open a student, the dashboard downloads their repo into
+   your grading folder in Google Drive (`stat100-grader-<you>/repos/`), at
+   **exactly the version we grade**. Want them all at once? Click
+   **Download all my students' work**. Please don't copy students' work
+   anywhere else (Desktop, Downloads, another drive): it stays in the course
+   folder, and access ends when the course does.
 4. For each question you see:
    - **Left:** two tabs. **Code (.qmd)**: the student's file for that question;
      lines the student wrote are highlighted in yellow, the grey text is our

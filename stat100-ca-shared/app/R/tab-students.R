@@ -79,7 +79,7 @@ students_server <- function(id, user, refresh) {
           if (!is.null(tmpl)) shiny::tags$details(class = "mt-2",
             shiny::tags$summary(icon_tag("envelope"), " Email these students"),
             email_panel_ui(ns(paste0("mail_", tmpl)), stats::na.omit(d$email),
-                           fill_template(tmpl, list(sender = (user$viewed_by %||% user)$name)))),
+                           fill_template(tmpl, list(sender = user$name)))),
           if (is.null(tmpl)) shiny::tags$small(class = "text-muted",
             "To fix a username or section by hand: admin/config/student-overrides.csv (huid, github, section), then Refresh student list.")
         )
@@ -154,7 +154,7 @@ students_server <- function(id, user, refresh) {
                                  shiny::tags$td(if (notjoined$in_org[i] == "invited") "invited, not accepted" else "not invited"))))),
                 shiny::tags$details(shiny::tags$summary(icon_tag("envelope"), " Email them"),
                   email_panel_ui(ns("mail_notjoined"), stats::na.omit(notjoined$email),
-                                 fill_template("github-not-joined", list(sender = (user$viewed_by %||% user)$name)))))))
+                                 fill_template("github-not-joined", list(sender = user$name)))))))
         })
     })
     shiny::observeEvent(input$org_check, shiny::withProgress(message = "Asking GitHub…", value = 0.5,

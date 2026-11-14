@@ -43,16 +43,27 @@ quizzes_server <- function(id, user, refresh) {
           stat_tile("Canvas assignment", if (is.na(cid)) "unknown" else cid, small = TRUE)),
         if (nrow(p)) shiny::div(class = "alert alert-info", sprintf("Already posted %s by %s (%d students). Posting again overwrites.", p$posted_at[1], p$posted_by[1], nrow(p))),
         if (nrow(r$unmatched)) bslib::card(bslib::card_header("Who is this? (Poll Everywhere rows that didn't match a student)"),
+          shiny::p(class = "small text-muted", "Unregistered people show the screen name they typed (or guestNNN) and everything they answered,",
+                   "in case they wrote their name or email in an answer. A best guess is pre-selected when there is one; check it, then Save match."),
           shiny::tags$table(class = "table table-sm align-middle", shiny::tags$tbody(lapply(seq_len(nrow(r$unmatched)), function(i) {
             u <- r$unmatched[i, ]
             st <- read_students()
-            shiny::tags$tr(shiny::tags$td(trimws(paste(u$first, u$last))), shiny::tags$td(u$email), shiny::tags$td(u$score),
+            who <- trimws(paste(u$first, u$last))
+            shiny::tags$tr(
+              shiny::tags$td(shiny::strong(if (nzchar(u$screen)) u$screen else who),
+                if (nzchar(u$screen) && who != u$screen) shiny::div(class = "small text-muted", who),
+                if (nzchar(u$email)) shiny::div(class = "small", u$email)),
+              shiny::tags$td(class = "small", style = "max-width: 420px;",
+                if (nzchar(u$answers)) shiny::tags$details(shiny::tags$summary("Their answers"),
+                  shiny::tags$pre(class = "small", style = "white-space: pre-wrap;", u$answers))),
+              shiny::tags$td(u$score),
               shiny::tags$td(shiny::selectizeInput(ns(paste0("m_", i)), NULL, width = "320px",
-                choices = c("Pick the student..." = "", stats::setNames(st$huid, paste0(st$name, " (", st$github %||% "", ")"))))),
+                choices = c("Pick the student..." = "", stats::setNames(st$huid, paste0(st$name, " (", st$github %||% "", ")"))),
+                selected = if (!is.na(u$guess)) u$guess else "")),
               shiny::tags$td(shiny::tags$button(class = "btn btn-outline-primary btn-xs", type = "button",
                 onclick = sprintf("Shiny.setInputValue('%s', %d, {priority: 'event'})", ns("match"), i), "Save match")))
           }))),
-          shiny::p(class = "small text-muted", "Matches are remembered for future quizzes. Rows you leave unmatched are not posted.")),
+          shiny::p(class = "small text-muted", "A typed screen name is remembered for future quizzes; a guestNNN match is for this quiz only. Rows you leave unmatched are not posted.")),
         if (is.na(cid)) shiny::div(class = "alert alert-warning",
           "Couldn't find this quiz's Canvas assignment in the Canvas export or calendar. Type its id (the number in the Canvas assignment's web address) below, or download a fresh Canvas gradebook."),
         shiny::textInput(ns("cid"), "Canvas assignment id", value = if (is.na(cid)) "" else cid, width = "220px"),

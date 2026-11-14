@@ -30,7 +30,7 @@ grading_ui <- function(id, user) {
       shiny::hr(),
       shiny::actionButton(ns("get_all"), "Download all my students' work", icon = icon_tag("cloud-download"),
                           class = "btn-outline-secondary btn-sm w-100"),
-      shiny::tags$small(class = "text-muted", "Copies go to ~/stat100-grading-repos on this computer.")
+      shiny::tags$small(class = "text-muted", "Copies are kept in your grading folder in Google Drive (repos/), not loose on this computer.")
     ),
     shiny::uiOutput(ns("main"))
   )
@@ -96,7 +96,7 @@ grading_server <- function(id, user) {
     # Local copy of the student's repo at the graded commit.
     repo_dir <- shiny::reactive({
       r <- row(); it <- info()
-      dest <- file.path(local_repos_dir(), it$repo, it$folder, r$repo)
+      dest <- file.path(local_repos_dir(user), it$repo, it$folder, r$repo)
       shiny::withProgress(message = paste("Getting", r$github, "'s work…"), value = 0.5, {
         tryCatch(checkout_copy(r$repo, r$sha, dest), error = function(e) {
           shiny::showNotification(paste("Couldn't download the repo:", conditionMessage(e)), type = "error", duration = NULL)
@@ -171,7 +171,7 @@ grading_server <- function(id, user) {
       shiny::withProgress(message = "Downloading", value = 0, {
         for (i in seq_len(n)) {
           shiny::incProgress(1 / n, detail = a$github[i])
-          dest <- file.path(local_repos_dir(), it$repo, it$folder, a$repo[i])
+          dest <- file.path(local_repos_dir(user), it$repo, it$folder, a$repo[i])
           ok <- tryCatch({ checkout_copy(a$repo[i], a$sha[i], dest); TRUE }, error = function(e) FALSE)
           if (!ok) fails <- c(fails, a$github[i])
         }

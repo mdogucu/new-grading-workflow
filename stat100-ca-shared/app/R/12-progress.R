@@ -6,7 +6,9 @@
 #     stat100-ca-shared/progress/<username>.csv
 #     item, assigned, graded, last_saved, updated_at
 # whenever they open the Grading tab or save a grade. "Assign graders" also
-# writes one for every grader, so the monitor sees assignments right away.
+# writes one for every grader, and so does opening the dashboard as an admin
+# (refresh_all_progress), so the monitor sees everyone even before a grader
+# has opened the dashboard.
 #
 # SHARING: the progress/ folder must be shared with all CAs as EDITOR
 # (the rest of stat100-ca-shared stays Viewer). See docs/sharing-folders.md.

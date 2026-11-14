@@ -21,6 +21,7 @@
 #   R/13-rubrics.R     building and checking rubrics
 #   R/14-exceptions.R  extensions and excused work (incl. EXCUSED on Canvas)
 #   R/15-quizzes.R     Poll Everywhere quiz files -> Canvas
+#   R/16-canvas-sync.R fill calendar.csv from the assignments in Canvas
 #   R/tab-*.R          one file per tab (UI + server)
 # ===========================================================================
 
@@ -47,7 +48,7 @@ ui <- function(req) {
     if (admin) bslib::nav_panel("Rubrics", value = "rubrics", icon = icon_tag("ui-checks"), rubrics_ui("rubrics")),
     if (admin) bslib::nav_panel("Students", value = "students", icon = icon_tag("people"), students_ui("students")),
     if (admin) bslib::nav_panel("Staff", value = "staff", icon = icon_tag("person-badge"), staff_ui("staff")),
-    bslib::nav_panel("Calendar", value = "calendar", icon = icon_tag("calendar3"), calendar_ui("calendar")),
+    bslib::nav_panel("Calendar", value = "calendar", icon = icon_tag("calendar3"), calendar_ui("calendar", user)),
     if (admin) bslib::nav_panel("Admin", value = "admin", icon = icon_tag("gear"), admin_ui("admin")),
     bslib::nav_spacer(),
     bslib::nav_panel("Setup", value = "setup", icon = icon_tag("tools"), setup_ui("setup")),
@@ -72,7 +73,7 @@ server <- function(input, output, session) {
   user <- user_for_request(shiny::isolate(session$clientData$url_search))
   go_to <- function(tab) bslib::nav_select("nav", tab, session = session)
   tasks_server("tasks", user, go_to)
-  calendar_server("calendar")
+  calendar_server("calendar", user)
   setup_server("setup", user)
   if (user$role %in% c("admin", "ca")) grading_server("grading", user)
   if (is_admin(user) || isTRUE(user$monitor)) progress_server("progress", user)

@@ -38,6 +38,7 @@ quiz_catalog <- function() {
                                    student_due = as.POSIXct(NA))
   }
   out <- rbind(a, b[!b$item %in% a$item, ])
+  if (!is.null(out)) out <- out[in_dashboard_scope(out$item), ]
   if (is.null(out)) out <- data.frame(item = character(), title = character(), canvas_id = character(), student_due = as.POSIXct(character()))
   out[order(out$item), ]
 }
@@ -49,6 +50,16 @@ read_pollev <- function(f) {
                     email = tolower(trimws(d$Email)),
                     score = suppressWarnings(as.numeric(d$Participation)), stringsAsFactors = FALSE)
   out$row <- seq_len(nrow(out))
+  out$screen <- trimws(d$`Screen name` %||% rep("", nrow(d))); out$screen[is.na(out$screen)] <- ""
+  # Everything the person typed or picked (all question columns), for clues
+  # like "guest012 is Jane Doe" or an email typed into an answer.
+  skip <- c("First name", "Last name", "Screen name", "Custom report ID", "Email", "Rank", "Attendance", "Grade",
+            "Participation", "Total points possible", "Total points earned", "Total answered")
+  qcols <- names(d)[!names(d) %in% skip & !grepl("^Points earned|^Responded at", names(d))]
+  out$answers <- vapply(seq_len(nrow(d)), function(i) {
+    v <- vapply(qcols, function(k) as.character(d[[k]][i] %||% NA), "")
+    paste(sprintf("%s: %s", trimws(gsub('^"|"$', "", qcols))[!is.na(v) & v != ""], v[!is.na(v) & v != ""]), collapse = "\n")
+  }, "")
   out <- out[!grepl("^Average grade$", out$first %||% ""), ]          # Poll Everywhere's summary row
   out$last[is.na(out$last)] <- ""; out$email[is.na(out$email)] <- ""
   s <- read_staff(FALSE)                                              # the teaching team answering
@@ -84,18 +95,48 @@ quiz_scores <- function(f, item = quiz_name_from_file(f)) {
     tolower(paste(first, last))
   }
   st$fl <- vapply(st$name, canvas_first_last, "")
-  # "Unregistered" rows have no name or email: a match for those is kept for
-  # this quiz only (key "quiz11b#row 76"); real names/emails are remembered for good.
-  pv$name <- ifelse(pv$email == "" & grepl("^unregistered", pv$first, ignore.case = TRUE),
-                    paste0(item, "#row ", pv$row), trimws(paste(pv$first, pv$last)))
+  # "Unregistered" rows have no name or email, only a screen name the student
+  # typed ("Valerie D") or one Poll Everywhere made up ("guest012").
+  #  - a typed screen name is remembered for good (key "screen:Valerie D")
+  #  - a guestNNN name changes every time, so that match is for this quiz only
+  unreg <- pv$email == "" & grepl("^unregistered", pv$first, ignore.case = TRUE)
+  guest <- grepl("^guest\\d*$", pv$screen, ignore.case = TRUE) | pv$screen == ""
+  pv$name <- ifelse(!unreg, trimws(paste(pv$first, pv$last)),
+                    ifelse(guest, paste0(item, "#", ifelse(pv$screen == "", paste("row", pv$row), pv$screen)),
+                           paste0("screen:", pv$screen)))
   pv$huid <- NA_character_
   for (i in seq_len(nrow(pv))) {
     h <- m$huid[(nzchar(m$pollev_email) & m$pollev_email == pv$email[i]) | (!nzchar(m$pollev_email) & m$pollev_name == pv$name[i])]
     h <- unique(h[!is.na(h)])
     if (!length(h) && nzchar(pv$email[i])) h <- st$huid[!is.na(st$email) & tolower(st$email) == pv$email[i]]
     if (!length(h)) h <- st$huid[!is.na(st$fl) & st$fl == tolower(pv$name[i])]
+    # an unregistered screen name that is exactly a student's full name
+    if (!length(h) && unreg[i] && !guest[i]) h <- st$huid[!is.na(st$fl) & st$fl == tolower(pv$screen[i])]
     if (length(h) == 1) pv$huid[i] <- h
   }
+  # Best guesses for the rows still unmatched (shown pre-selected, not saved
+  # until you click "Save match"): "Valerie D" = first name + last initial,
+  # "Ashi" = first name or GitHub username, or a student's email or name
+  # appearing anywhere in their answers.
+  guess_for <- function(i) {
+    sc <- tolower(pv$screen[i]); txt <- tolower(pv$answers[i])
+    first <- sub(" .*$", "", st$fl); last <- sub("^\\S+ ", "", st$fl)
+    cand <- character()
+    if (nzchar(sc) && !guest[i]) {
+      p <- strsplit(sc, "\\s+")[[1]]
+      if (length(p) >= 2) cand <- st$huid[first == p[1] & startsWith(last, sub("\\.$", "", p[length(p)]))]
+      if (!length(cand)) cand <- st$huid[first == p[1] | tolower(st$github %||% "") == sc]
+      if (length(cand) != 1) cand <- st$huid[!is.na(st$github) & startsWith(tolower(st$github), gsub("\\s+", "", sc))]
+    }
+    if (length(cand) != 1 && nzchar(txt)) {
+      hit <- (!is.na(st$email) & nzchar(st$email) & vapply(tolower(st$email), function(e) grepl(e, txt, fixed = TRUE), TRUE)) |
+             vapply(st$fl, function(n) nzchar(n) && grepl(n, txt, fixed = TRUE), TRUE)
+      if (sum(hit) == 1) cand <- st$huid[hit]
+    }
+    if (length(cand) == 1) cand else NA_character_
+  }
+  pv$guess <- NA_character_
+  for (i in which(is.na(pv$huid))) pv$guess[i] <- guess_for(i)
   pv$score[is.na(pv$score)] <- 0
   # someone answering twice (two accounts): keep the best score
   ok <- pv[!is.na(pv$huid), ]
@@ -113,7 +154,7 @@ quiz_scores <- function(f, item = quiz_name_from_file(f)) {
   matched <- matched[!matched$huid %in% exc_rows$huid, ]
   absent <- absent[!absent$huid %in% exc_rows$huid, ]
   if (nrow(exc_rows)) matched <- rbind(matched, data.frame(exc_rows, score = NA, status = "excused"))
-  list(matched = matched, unmatched = pv[is.na(pv$huid), c("first", "last", "email", "score", "name")], absent = absent)
+  list(matched = matched, unmatched = pv[is.na(pv$huid), c("first", "last", "email", "screen", "answers", "score", "name", "guess")], absent = absent)
 }
 
 quiz_posted <- function() {
