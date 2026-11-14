@@ -1,0 +1,13 @@
+Subject: {course}: please send us your GitHub username
+
+Hi,
+
+All {course} work is submitted through GitHub, and we don't have your GitHub username yet. Without it we can't create your weekly repositories.
+
+Please complete the "GitHub username" survey on Gradescope as soon as possible. If you don't have a GitHub account yet, create one at https://github.com/signup (a username you'd be comfortable sharing professionally is best), then fill out the survey.
+
+If you've already done this, or you're no longer taking the course, just reply and let us know.
+
+Thanks,
+{sender}
+{course} teaching team

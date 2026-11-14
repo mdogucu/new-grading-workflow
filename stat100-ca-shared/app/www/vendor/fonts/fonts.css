@@ -1,0 +1,6 @@
+/* Fonts bundled so the dashboard works offline (SIL Open Font License). */
+@font-face { font-family: 'Atkinson Hyperlegible'; font-weight: 400; font-style: normal; font-display: swap; src: url('atkinson-hyperlegible-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible'; font-weight: 700; font-style: normal; font-display: swap; src: url('atkinson-hyperlegible-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible'; font-weight: 400; font-style: italic; font-display: swap; src: url('atkinson-hyperlegible-latin-400-italic.woff2') format('woff2'); }
+@font-face { font-family: 'Source Code Pro'; font-weight: 400; font-style: normal; font-display: swap; src: url('source-code-pro-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Source Code Pro'; font-weight: 600; font-style: normal; font-display: swap; src: url('source-code-pro-latin-600-normal.woff2') format('woff2'); }

@@ -1,0 +1,15 @@
+username,name,email,role,senior,monitor,section,on_hold,notes
+mdogucu,Mine Dogucu,mdogucu@fas.harvard.edu,admin,FALSE,FALSE,,FALSE,instructor
+JulieVu,Julie,julievu@g.harvard.edu,admin,FALSE,FALSE,,FALSE,preceptor
+siripanetta,Siri Panetta,siripanetta@college.harvard.edu,ca,TRUE,FALSE,,FALSE,
+annie-harrington,Annie Harrington,aharrington@college.harvard.edu,ca,FALSE,FALSE,D018,FALSE,
+julia-dong,Julia Dong,juliadong@college.harvard.edu,ca,FALSE,FALSE,D005,FALSE,
+ysalerno,Yasmin Salerno,ysalerno@college.harvard.edu,ca,TRUE,FALSE,D021,FALSE,
+oliversong-oss,Oliver Song,oliversong@college.harvard.edu,ca,TRUE,FALSE,D019,FALSE,
+iza1975,Izabela Pacheco Silva,izabelapachecosilva@college.harvard.edu,ca,FALSE,FALSE,D001,FALSE,
+tinokarakousis,Tino Karakousis,tinokarakousis@college.harvard.edu,ca,FALSE,FALSE,D012,FALSE,
+jhperk,Johnny Perkins,jperkins@college.harvard.edu,ca,FALSE,FALSE,D010,FALSE,
+charlotte-chapman,Charlotte Chapman,cchapman@college.harvard.edu,ca,FALSE,FALSE,D003,FALSE,
+Andreatchinda,Andrea Tchinda Machedjou,andreatchindamachedjou@college.harvard.edu,ca,FALSE,FALSE,,FALSE,
+virgil-guo,Virgil Guo,virgilguo@college.harvard.edu,ca,TRUE,FALSE,D014,FALSE,
+bjliao,Brooke Liao,bliao@college.harvard.edu,ca,FALSE,FALSE,D004,FALSE,

@@ -1,0 +1,16 @@
+Subject: {course}: please accept your GitHub invitation
+
+Hi,
+
+You were invited to join the {course} GitHub organization ({github_org}), but the invitation hasn't been accepted yet. We can only create your weekly repositories after you join.
+
+To accept:
+1. Sign in to GitHub with the username you gave us.
+2. Go to https://github.com/orgs/{github_org}/invitation (or check your email for the invitation from GitHub).
+3. Click "Join {github_org}".
+
+Invitations expire after 7 days. If yours has expired, reply to this email and we'll send a new one.
+
+Thanks,
+{sender}
+{course} teaching team

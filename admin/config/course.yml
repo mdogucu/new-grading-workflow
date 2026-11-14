@@ -1,0 +1,23 @@
+# Course settings. Edit the values on the right of each colon.
+# Lines starting with # are comments and are ignored.
+
+course: "STAT 100"
+semester: "Fall 2026"
+github_org: "stat100-fa26"          # github.com/<this> is the course organization
+website: "https://stat-100.com"
+canvas_url: "https://canvas.harvard.edu"
+canvas_course_id: "170920"           # the number in your Canvas course URL
+timezone: "America/New_York"
+can_view_as: "mdogucu, JulieVu"       # who may use "View as" (see the dashboard as another person)
+week1_monday: "2026-08-31"           # Monday of course week 1 (weeks run Mon-Sun)
+weeks: 14                            # number of course weeks
+
+# Grading rules
+late_window_hours: 48                # wait this long after a deadline before "Find submissions" shows up on My tasks
+late_allowance_hours: 48             # HOMEWORK: semester-wide late allowance (total); over it = 0
+regrade_window_days: 7               # regrade requests accepted for 7 days after release
+regrade_due_days: 3                  # a routed regrade is due 3 days after routing
+section_grade_steps: 10              # section completion is graded in steps of 10%
+
+# Quizzes
+quiz_grader: "mdogucu"                 # who gets the "Grade quiz" to-dos

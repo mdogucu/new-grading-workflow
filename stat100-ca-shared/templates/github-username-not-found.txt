@@ -1,0 +1,11 @@
+Subject: {course}: we couldn't find your GitHub username
+
+Hi,
+
+The GitHub username you gave us in the Gradescope survey doesn't match any GitHub account, so we couldn't invite you to the course organization. It may have a typo.
+
+Please double-check your username (it's shown at https://github.com/settings/profile when you are signed in) and reply to this email with the correct one.
+
+Thanks,
+{sender}
+{course} teaching team

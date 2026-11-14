@@ -1,0 +1,13 @@
+Subject: {course}: grading for {item} is due {due}
+
+Hi,
+
+A quick reminder that grading for {item} ({title}) is due {due}.
+The dashboard shows you still have some students left. Open the dashboard,
+go to the Grading tab, and pick {item}.
+
+If something is getting in the way (a problem with the dashboard, a student's
+file that won't open, too much on your plate this week), just reply and let me know.
+
+Thanks,
+{sender}

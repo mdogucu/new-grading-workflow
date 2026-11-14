@@ -1,0 +1,66 @@
+# ===========================================================================
+# What goes to GitHub: code, docs, templates and settings ONLY.
+# Nothing with student information is ever tracked.
+#
+# How this file works: step 1 ignores every file; step 2 lists the few that
+# are allowed; step 3 re-blocks folders that must never be tracked, even if
+# a rule above would allow something inside them. When you add a new kind
+# of file that should be on GitHub, add a "!" line to step 2.
+#
+# Check before committing:   git status      (or: git add -n .)
+# ===========================================================================
+
+# --- 1. ignore everything -------------------------------------------------
+*
+!*/
+
+# --- 2. allow: code, docs, templates, non-student settings ----------------
+!/.gitignore
+!/README.md
+!/*.Rproj
+
+!/stat100-ca-shared/README.md
+!/stat100-ca-shared/app/**
+!/stat100-ca-shared/docs/**
+!/stat100-ca-shared/templates/**
+!/stat100-ca-shared/rubrics/README.txt
+!/stat100-ca-shared/course-info/README.txt
+!/stat100-ca-shared/progress/README.txt
+
+!/admin/README.md
+!/admin/config/course.yml
+!/admin/config/calendar.csv
+!/admin/config/sections.csv
+!/admin/config/staff.csv
+!/admin/config/monitor-overrides.csv
+
+!/graders/README.txt
+
+# --- 3. never track (student data, private files, junk) -------------------
+# student lists, downloads, snapshots, grades, logs, example student repos
+/admin/inputs/
+/admin/data/
+/admin/logs/
+/admin/examples/
+# conflicts of interest, per-student fixes, extensions/excused, quiz matches
+/admin/config/coi.csv
+/admin/config/student-overrides.csv
+/admin/config/exceptions.csv
+/admin/config/pollev-matches.csv
+# every grader's folder (assignments and grades)
+/graders/*/
+# CA-visible copies of the roster and progress counts
+/stat100-ca-shared/course-info/*.csv
+/stat100-ca-shared/progress/*.csv
+# rubrics contain the answers — keep them off GitHub unless the repo is private
+# (to track them, delete the next two lines)
+/stat100-ca-shared/rubrics/*.csv
+/stat100-ca-shared/rubrics/old/
+# R / RStudio / Mac / secrets
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.Renviron
+.DS_Store
+*.tgz
