@@ -246,3 +246,15 @@ canvas_token <- function() {
   }
   ""
 }
+
+# --- which items the dashboard handles ---------------------------------------
+# course.yml: first_week_homework / first_week_section / first_week_quiz.
+# Earlier items (graded the old way) are ignored by "Calendar from Canvas"
+# and the quiz list. Missing settings = everything.
+in_dashboard_scope <- function(item) {
+  co <- read_course()
+  first <- c(hw = as.numeric(co$first_week_homework %||% 0), sec = as.numeric(co$first_week_section %||% 0),
+             quiz = as.numeric(co$first_week_quiz %||% 0))
+  m <- regmatches(item, regexec("^(hw|sec|quiz)0*(\\d+)", item))
+  vapply(m, function(z) if (!length(z)) TRUE else as.numeric(z[3]) >= first[[z[2]]], TRUE)
+}

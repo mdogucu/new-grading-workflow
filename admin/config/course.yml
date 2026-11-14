@@ -26,3 +26,8 @@ quiz_grader: "mdogucu"                 # who gets the "Grade quiz" to-dos
 grading_days_homework: 3
 grading_days_section: 3
 grading_days_quiz: 3
+
+# Where the dashboard starts (earlier items were graded the old way and are ignored)
+first_week_homework: 11
+first_week_section: 11
+first_week_quiz: 12

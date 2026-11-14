@@ -29,12 +29,20 @@ regrade window. Each line has a comment explaining it.
 `section, day, time, location, leader` — leader is the GitHub username of the
 CA/TF who teaches it and grades its section work.
 
+### Where the dashboard starts
+Everything up to hw09/sec09/quiz11b was graded the old way. course.yml
+`first_week_homework: 11`, `first_week_section: 11`, `first_week_quiz: 12`
+tell the dashboard to ignore anything earlier (Calendar from Canvas skips it,
+quizzes list skips it). Old quiz files are in inputs/pollev/before-dashboard/,
+old rubrics in stat100-ca-shared/rubrics/old/. The late ledger keeps weeks
+1–7 on purpose: the 48-hour allowance counts the whole semester.
+
 ### calendar.csv — one row per gradable item (homework, section, quiz)
 **You don't have to type most of it.** Admin tab ▸ **Calendar from Canvas** ▸
 Check Canvas reads the assignments you already made in Canvas (named like
 hw09-statistical-inference, sec09-…, quiz11b) and fills in new items, titles,
 week repo names, due dates and Canvas ids, plus a default grading due date
-where it's empty (course.yml `grading_days_homework` / `_section` / `_quiz`
+where it's empty (course.yml `grading_days_homework` / `_section` / `_quiz`, all 3:
 days after the due date). You see the list of changes before anything is
 written; the old file is kept in config/old/. Canvas wins for due dates and
 ids, so change those in Canvas and check again. Owners, ready-by dates and
@@ -42,7 +50,7 @@ grading due dates you typed are never overwritten.
 
 Quizzes are rows with `type = quiz` (quiz11b = week 11, lecture b). They were
 filled in for every Monday (a) and Wednesday (b) lecture, skipping holidays,
-with student_due = 1:15 pm that day and grading_due = 2 days later. Delete
+with student_due = 1:15 pm that day and grading_due = 3 days later at 11:59 pm. Delete
 rows for days without a quiz, add the Canvas id when you know it. After a
 quiz's date it appears on your My tasks as "Grade quiz11b".
 | column | meaning |
