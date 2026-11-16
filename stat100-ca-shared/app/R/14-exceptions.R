@@ -5,7 +5,9 @@
 #   item, github, type, new_due, note, added_by, added_at, canvas_excused
 #   type = "extension": this student's deadline is new_due instead of the
 #          calendar's (work up to then is on time; late minutes, if any,
-#          count from new_due).
+#          count from new_due). Until new_due the student stays on their
+#          grader's list marked "extension — don't grade yet"; after it,
+#          their commits are read again (refreshed_at) and grading opens.
 #   type = "excused":  the student doesn't do this item. Not graded, not
 #          assigned, and on Canvas the submission is marked EXCUSED (neither
 #          full points nor 0). canvas_excused = TRUE once that's been done.
@@ -14,7 +16,7 @@
 # ---------------------------------------------------------------------------
 
 exceptions_path <- function() admin_path("config", "exceptions.csv")
-exception_cols <- c("item", "github", "type", "new_due", "note", "added_by", "added_at", "canvas_excused")
+exception_cols <- c("item", "github", "type", "new_due", "note", "added_by", "added_at", "canvas_excused", "refreshed_at")
 
 read_exceptions <- function(item = NULL) {
   e <- read_csv_quiet(exceptions_path())
@@ -82,20 +84,4 @@ canvas_excuse <- function(item, github, excuse = TRUE) {
     httr2::req_body_form(`submission[excuse]` = if (excuse) "true" else "false")
   httr2::req_perform(req)
   invisible(TRUE)
-}
-
-# Mark every not-yet-marked excused student on Canvas. Returns how many.
-post_excused <- function(user = current_user()) {
-  require_admin(user, "mark students excused on Canvas")
-  e <- read_exceptions(); todo <- which(e$type == "excused" & !e$canvas_excused)
-  sent <- 0; fails <- character()
-  for (k in todo) {
-    ok <- tryCatch({ canvas_excuse(e$item[k], e$github[k], TRUE); TRUE },
-                   error = function(err) { fails <<- c(fails, sprintf("%s %s (%s)", e$item[k], e$github[k], conditionMessage(err))); FALSE })
-    if (ok) { e$canvas_excused[k] <- TRUE; sent <- sent + 1 }
-  }
-  write_exceptions(e)
-  log_action(acting_username(user), "excused on Canvas", sprintf("%d marked; problems: %s", sent, paste(fails, collapse = "; ")))
-  if (length(fails)) stop(sprintf("%d marked, but not: %s", sent, paste(fails, collapse = "; ")))
-  sent
 }

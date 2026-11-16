@@ -216,6 +216,8 @@ check_my_grading <- function(user) {
   cal <- read_calendar()
   out <- lapply(its, function(it) {
     a <- my_assignment(user$username, it); g <- read_grades(user$username, it)
+    w <- if (("wait_until" %in% names(a))) parse_when(a$wait_until) else rep(NA, nrow(a))
+    a <- a[!((!is.na(w) & w > now_et()) | is.na(a$sha) | a$sha == ""), ]   # extensions: not yet
     left <- sum(!a$github %in% g$github)
     if (!left) return(NULL)
     due <- cal$grading_due[match(it, cal$item)]
@@ -241,10 +243,6 @@ check_grading_setup <- function() {
                                         "Late work tab. Graders can't be assigned until this is done.", tab = "late")
     else if (is.null(read_assignments(it))) t[[length(t) + 1]] <- task(sprintf("Assign graders for %s", it),
                                         "Admin tab > Weekly grading, step 2.", tab = "admin")
-    if (ready$type[i] == "homework") {
-      nn <- tryCatch(nrow(late_notices(it)), error = function(e) 0)
-      if (nn) t[[length(t) + 1]] <- task(sprintf("Post %d late notice(s) for %s to Canvas", nn, it), "Late work tab.", tab = "late")
-    }
     if (!file.exists(rubric_path(it))) t[[length(t) + 1]] <- task(sprintf("Add the rubric for %s", it),
                                         sprintf("stat100-ca-shared/rubrics/%s-rubric.csv", it), tab = "admin")
     dplyr::bind_rows(t)
@@ -293,25 +291,46 @@ check_quizzes <- function() {
   due_of <- function(it) { d <- cal$grading_due[match(tolower(it), tolower(cal$item))]; if (length(d)) d else NA }
   for (f in unposted_quiz_files()) {
     it <- quiz_name_from_file(f); due <- due_of(it)
-    out[[length(out) + 1]] <- task(sprintf("Grade %s", it), paste("Post", basename(f), "to Canvas."), due = due,
-                                   tab = "quizzes", id = paste0("quiz-", basename(f)),
+    out[[length(out) + 1]] <- task(sprintf("Grade %s", it), paste("Match any unmatched rows of", basename(f), "on the Quizzes tab, then post it on the Post to Canvas tab."), due = due,
+                                   tab = "canvas", id = paste0("quiz-", basename(f)),
                                    level = if (!is.na(due) && due < now_et()) "overdue" else "todo")
   }
   # Quizzes in calendar.csv given in the last week with no Poll Everywhere file yet.
   q <- cal[cal$type %in% "quiz" & !is.na(cal$student_due) & cal$student_due < now_et() & cal$student_due > now_et() - 7 * 86400, ]
-  have <- tolower(c(quiz_name_from_file(list.files(pollev_dir(), pattern = "\\.csv$")), unique(quiz_posted()$item)))
+  have <- tolower(c(quiz_name_from_file(list.files(pollev_dir(), pattern = "\\.csv$")), unique(read_canvas_log()$item)))
   for (i in seq_len(nrow(q))) if (!tolower(q$item[i]) %in% have)
     out[[length(out) + 1]] <- task(sprintf("Grade %s", q$item[i]),
-      "Download the Poll Everywhere gradebook into admin/inputs/pollev/, then post it on the Quizzes tab. (No quiz that day? Dismiss, or delete the row from calendar.csv.)",
+      "Download the Poll Everywhere gradebook into admin/inputs/pollev/, check matches on the Quizzes tab, then post it on the Post to Canvas tab. (No quiz that day? Dismiss, or delete the row from calendar.csv.)",
       due = q$grading_due[i], tab = "quizzes", id = paste0("quiz-cal-", q$item[i]),
       level = if (!is.na(q$grading_due[i]) && q$grading_due[i] < now_et()) "overdue" else "todo")
   dplyr::bind_rows(out)
 }
 
-check_excused_canvas <- function() {
-  e <- read_exceptions(); n <- sum(e$type == "excused" & !e$canvas_excused)
-  if (!n) return(no_tasks())
-  task(sprintf("Mark %d excused student(s) on Canvas", n), "Late & excused tab.", tab = "late")
+# Post to Canvas: homework/section grades that are ready (everyone graded,
+# or only extensions left), and changes after posting (regrades). Quizzes are
+# covered by check_quizzes() for the quiz grader.
+check_canvas_posting <- function(user) {
+  s <- canvas_summary(user)
+  its <- canvas_items(user); s$type <- its$type[match(s$item, its$item)]
+  out <- list()
+  for (i in seq_len(nrow(s))) {
+    if (s$changed[i] > 0) out[[length(out) + 1]] <- task(sprintf("Post %d changed grade(s) for %s to Canvas", s$changed[i], s$item[i]),
+      "Grades changed after they were posted (e.g. a regrade). Post to Canvas tab.", tab = "canvas")
+    if (s$ready[i] > 0 && (s$type[i] != "quiz" || s$posted[i] > 0)) {
+      first <- s$posted[i] == 0
+      out[[length(out) + 1]] <- task(
+        sprintf(if (first) "Post %s grades to Canvas (%d ready%s)" else "Post %2$d more grade(s) for %1$s to Canvas%3$s", s$item[i], s$ready[i],
+                if (s$waiting[i] > 0) sprintf(", %d not ready yet", s$waiting[i]) else ""),
+        if (first && s$waiting[i] > 0) "Some aren't graded yet; you can wait or post the ready ones now." else "Post to Canvas tab.",
+        tab = "canvas", level = if (first && s$waiting[i] > 0) "info" else "todo")
+    }
+  }
+  # EXCUSED for items not on the Post to Canvas list yet (e.g. a quiz with no file)
+  e <- read_exceptions(); e <- e[e$type == "excused" & !e$canvas_excused & !e$item %in% s$item, ]
+  if (nrow(e)) out[[length(out) + 1]] <- task(sprintf("%d excused student(s) not marked on Canvas yet", nrow(e)),
+    sprintf("For %s. They're marked EXCUSED when you post that item on the Post to Canvas tab.", paste(unique(e$item), collapse = ", ")),
+    tab = "canvas", level = "info")
+  dplyr::bind_rows(out)
 }
 
 check_on_hold <- function(user) {
@@ -326,7 +345,7 @@ tasks_for <- function(user = current_user()) {
     task(paste("Couldn't check:", deparse(substitute(f))), conditionMessage(e), level = "info"))
   tl <- list(safe(check_my_setup, user), safe(check_monitor_duty, user), safe(check_on_hold, user))
   if (is_admin(user)) tl <- c(tl, list(safe(check_setup_files), safe(check_staff), safe(check_roster),
-                                       safe(check_coi), safe(check_calendar), safe(check_grading_setup), safe(check_excused_canvas)))
+                                       safe(check_coi), safe(check_calendar), safe(check_grading_setup), safe(check_canvas_posting, user)))
   if (is_admin(user) && tolower(user$username %||% "") %in% tolower(trimws(strsplit(read_course()$quiz_grader %||% "", ",")[[1]])))
     tl <- c(tl, list(safe(check_quizzes)))
   if (user$role %in% c("ca", "admin")) tl <- c(tl, list(safe(check_my_grading, user), safe(check_prep, user)))

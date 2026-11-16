@@ -66,14 +66,23 @@ grading_server <- function(id, user) {
     rubric <- shiny::reactive({ shiny::req(input$item); read_rubric(input$item) })
     info <- shiny::reactive({ shiny::req(input$item); item_info(input$item) })
     done <- shiny::reactive(unique(grades()$github))
+    # Students still inside an extension: on the list, but not to be graded yet.
+    waiting <- shiny::reactive({
+      a <- asg(); if (is.null(a) || !("wait_until" %in% names(a))) return(character())
+      w <- parse_when(a$wait_until)
+      a$github[(!is.na(w) & w > now_et()) | (is.na(a$sha) | a$sha == "")]
+    })
 
     output$progress <- shiny::renderUI({
       a <- asg(); if (is.null(a)) return(NULL)
+      wt <- waiting(); a <- a[!a$github %in% wt, ]
       n <- nrow(a); k <- sum(a$github %in% done())
       it <- info()
       shiny::div(class = "grading-progress",
         shiny::div(class = "d-flex justify-content-between",
           shiny::strong(sprintf("%d of %d graded", k, n)), shiny::span(class = "text-muted", sprintf("%d left", n - k))),
+        if (length(wt)) shiny::div(class = "small text-muted", icon_tag("hourglass-split"),
+          sprintf(" + %d with an extension (not yet)", length(wt))),
         shiny::div(class = "progress", style = "height: 10px;",
           shiny::div(class = "progress-bar", style = sprintf("width:%d%%;", if (n) round(100 * k / n) else 0))),
         if (!is.na(it$grading_due)) shiny::div(class = "small text-muted mt-1", icon_tag("clock"), " Due ", fmt_due(it$grading_due)))
@@ -81,9 +90,13 @@ grading_server <- function(id, user) {
 
     shiny::observe({
       a <- asg(); if (is.null(a)) return()
-      left <- a$github[!a$github %in% done()]
-      ch <- if (isTRUE(input$show_done)) c(left, setdiff(a$github, left)) else left
-      lab <- ifelse(ch %in% done(), paste(ch, "✓"), ch)
+      wt <- waiting()
+      left <- a$github[!a$github %in% c(done(), wt)]
+      ch <- c(left, if (length(wt)) wt[!wt %in% done()])
+      if (isTRUE(input$show_done)) ch <- c(ch, setdiff(a$github, ch))
+      wl <- if (("wait_until" %in% names(a))) a$wait_until[match(ch, a$github)] else rep("", length(ch))
+      lab <- ifelse(ch %in% done(), paste(ch, "\u2713"),
+               ifelse(ch %in% wt, paste0(ch, "  (extension", ifelse(!is.na(wl) & nzchar(wl), paste0(" until ", fmt_short(wl)), ""), ": not yet)"), ch))
       sel <- shiny::isolate(input$student)
       shiny::updateSelectInput(session, "student", choices = stats::setNames(ch, lab),
                                selected = if (!is.null(sel) && sel %in% ch) sel else ch[1])
@@ -91,6 +104,7 @@ grading_server <- function(id, user) {
 
     row <- shiny::reactive({
       a <- asg(); shiny::req(input$student, a, input$student %in% a$github)   # wait until the list has caught up
+      shiny::req(!input$student %in% waiting())                               # nothing to download yet
       a[a$github == input$student, ][1, ] })
 
     # Local copy of the student's repo at the graded commit.
@@ -167,7 +181,7 @@ grading_server <- function(id, user) {
     })
 
     shiny::observeEvent(input$get_all, {
-      a <- asg(); it <- info(); n <- nrow(a); fails <- character()
+      a <- asg(); a <- a[!a$github %in% waiting(), ]; it <- info(); n <- nrow(a); fails <- character()
       shiny::withProgress(message = "Downloading", value = 0, {
         for (i in seq_len(n)) {
           shiny::incProgress(1 / n, detail = a$github[i])
@@ -186,6 +200,14 @@ grading_server <- function(id, user) {
 
     output$main <- shiny::renderUI({
       if (is.null(asg())) return(empty_state("No grading assigned to you yet."))
+      if (isTRUE(input$student %in% waiting())) {
+        a <- asg(); w <- if (("wait_until" %in% names(a))) a$wait_until[a$github == input$student][1] else ""
+        return(shiny::div(class = "alert alert-info mt-3", icon_tag("hourglass-split"),
+          shiny::strong(sprintf(" %s has an extension", input$student)),
+          if (!is.na(w) && nzchar(w)) sprintf(" until %s.", fmt_short(w)) else ".",
+          shiny::p(class = "mb-0 mt-2", "Don't grade them yet. They stay on your list; once the extension is over, the version",
+                   "to grade is updated and they'll show up like everyone else.")))
+      }
       r <- rubric(); q <- qs()
       if (is.null(r)) return(empty_state(sprintf("No rubric found. Add stat100-ca-shared/rubrics/%s-rubric.csv.", input$item)))
       d <- repo_dir()
@@ -327,7 +349,7 @@ grading_server <- function(id, user) {
       if (!do_save()) return()
       a <- asg(); cur <- input$student
       saved_tick(saved_tick() + 1)
-      left <- a$github[!a$github %in% c(done(), cur)]
+      left <- a$github[!a$github %in% c(done(), cur, waiting())]
       if (length(left)) shiny::updateSelectInput(session, "student", selected = left[1])
       else shiny::showNotification("That was the last one — all done!", type = "message", duration = 8)
     })

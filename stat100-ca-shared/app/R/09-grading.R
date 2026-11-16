@@ -137,7 +137,7 @@ assign_item <- function(item, user = current_user()) {
     stop(sprintf("%d late submission(s) still need a decision — Late work tab first.", sum(sn$status == "needs review")))
   # graded: see graded_statuses in R/10-late.R.
   # not graded: no submission, no repo, over allowance (gets 0).
-  sub <- sn[sn$status %in% graded_statuses & !is.na(sn$sha), ]
+  sub <- sn[gradeable(sn), ]
   coi <- read_coi(); staff <- read_staff()
   if (it$type == "section") {
     sec <- read_sections()
@@ -166,8 +166,7 @@ assign_item <- function(item, user = current_user()) {
   for (g in unique(stats::na.omit(asg$grader))) {
     d <- file.path(course_root(), "graders", grader_folder_name(g), "grading", item)
     dir.create(d, recursive = TRUE, showWarnings = FALSE)
-    mine <- asg[asg$grader %in% g, c("item", "github", "repo", "sha")]
-    readr::write_csv(mine, file.path(d, "assignment.csv"), na = "")
+    readr::write_csv(grader_list(asg, g), file.path(d, "assignment.csv"), na = "")
   }
   for (g in unique(stats::na.omit(asg$grader))) write_progress(g)
   log_action(user$username, paste("assign graders", item),

@@ -47,6 +47,10 @@ progress_server <- function(id, user) {
                   shiny::span(class = paste0("pill pill-", lvl), c(ok = "Done", overdue = "Overdue", todo = "Not started", info = "In progress")[[lvl]])),
                 shiny::tags$td(class = "small text-muted", d$last_saved[i] %||% ""))
             }))),
+          if (is_admin(user)) shiny::div(class = "small mb-2",
+            icon_tag("table"), " All grades for this item: ",
+            shiny::tags$code(sprintf("admin/data/grades/%s.csv", it)), " (every question) and ",
+            shiny::tags$code(sprintf("%s-totals.csv", it)), " (one row per student). Updated whenever you open the dashboard or click Rebuild."),
           if (!is.null(behind)) shiny::tags$details(shiny::tags$summary(icon_tag("envelope"), sprintf(" Remind the %d grader(s) who aren't done", nrow(behind))),
             email_panel_ui(ns(paste0("mail_", it)), stats::na.omit(behind$email),
               fill_template("grading-reminder", list(sender = user$name, item = it,

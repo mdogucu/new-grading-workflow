@@ -12,10 +12,11 @@
 # 3. Score = the "Participation" column (a percent), as in the old script.
 #    Excused students (Late & excused tab) are marked EXCUSED on Canvas
 #    instead; students with an extension are skipped for now.
-# 4. "Post to Canvas" sends everything in one go. The Canvas assignment is
-#    found from the quiz name in the Canvas gradebook export ("quiz11b (1135126)")
-#    or from calendar.csv (type quiz, canvas_id). Posted scores are recorded in
-#    admin/data/quiz-posted.csv.
+# 4. Post to Canvas tab: pick the quiz and post (R/17-canvas-post.R). The
+#    Canvas assignment comes from calendar.csv (type quiz, canvas_id) or the
+#    quiz name in the Canvas gradebook export ("quiz11b (1135126)"). What was
+#    sent is recorded in admin/data/canvas-posted.csv. A match made after
+#    posting shows up there as a new score to post.
 # ---------------------------------------------------------------------------
 
 pollev_dir <- function() admin_path("inputs", "pollev")
@@ -121,22 +122,25 @@ quiz_scores <- function(f, item = quiz_name_from_file(f)) {
   guess_for <- function(i) {
     sc <- tolower(pv$screen[i]); txt <- tolower(pv$answers[i])
     first <- sub(" .*$", "", st$fl); last <- sub("^\\S+ ", "", st$fl)
-    cand <- character()
     if (nzchar(sc) && !guest[i]) {
       p <- strsplit(sc, "\\s+")[[1]]
-      if (length(p) >= 2) cand <- st$huid[first == p[1] & startsWith(last, sub("\\.$", "", p[length(p)]))]
-      if (!length(cand)) cand <- st$huid[first == p[1] | tolower(st$github %||% "") == sc]
-      if (length(cand) != 1) cand <- st$huid[!is.na(st$github) & startsWith(tolower(st$github), gsub("\\s+", "", sc))]
+      if (length(p) >= 2) { c1 <- st$huid[first == p[1] & startsWith(last, sub("\\.$", "", p[length(p)]))]
+        if (length(c1) == 1) return(c(c1, sprintf("screen name \"%s\" = first name + last initial", pv$screen[i]))) }
+      c2 <- st$huid[first == p[1]]
+      if (length(c2) == 1) return(c(c2, sprintf("screen name \"%s\" = first name", pv$screen[i])))
+      c3 <- st$huid[!is.na(st$github) & startsWith(tolower(st$github), gsub("\\s+", "", sc))]
+      if (length(c3) == 1) return(c(c3, sprintf("screen name \"%s\" matches a GitHub username", pv$screen[i])))
     }
-    if (length(cand) != 1 && nzchar(txt)) {
-      hit <- (!is.na(st$email) & nzchar(st$email) & vapply(tolower(st$email), function(e) grepl(e, txt, fixed = TRUE), TRUE)) |
-             vapply(st$fl, function(n) nzchar(n) && grepl(n, txt, fixed = TRUE), TRUE)
-      if (sum(hit) == 1) cand <- st$huid[hit]
+    if (nzchar(txt)) {
+      e <- !is.na(st$email) & nzchar(st$email) & vapply(tolower(st$email), function(x) grepl(x, txt, fixed = TRUE), TRUE)
+      if (sum(e) == 1) return(c(st$huid[e], "their email appears in an answer"))
+      n <- vapply(st$fl, function(x) nzchar(x) && grepl(x, txt, fixed = TRUE), TRUE)
+      if (sum(n) == 1) return(c(st$huid[n], "their name appears in an answer"))
     }
-    if (length(cand) == 1) cand else NA_character_
+    c(NA_character_, "")
   }
-  pv$guess <- NA_character_
-  for (i in which(is.na(pv$huid))) pv$guess[i] <- guess_for(i)
+  pv$guess <- NA_character_; pv$guess_why <- ""
+  for (i in which(is.na(pv$huid))) { g <- guess_for(i); pv$guess[i] <- g[1]; pv$guess_why[i] <- g[2] }
   pv$score[is.na(pv$score)] <- 0
   # someone answering twice (two accounts): keep the best score
   ok <- pv[!is.na(pv$huid), ]
@@ -154,60 +158,14 @@ quiz_scores <- function(f, item = quiz_name_from_file(f)) {
   matched <- matched[!matched$huid %in% exc_rows$huid, ]
   absent <- absent[!absent$huid %in% exc_rows$huid, ]
   if (nrow(exc_rows)) matched <- rbind(matched, data.frame(exc_rows, score = NA, status = "excused"))
-  list(matched = matched, unmatched = pv[is.na(pv$huid), c("first", "last", "email", "screen", "answers", "score", "name", "guess")], absent = absent)
+  list(matched = matched, unmatched = pv[is.na(pv$huid), c("first", "last", "email", "screen", "answers", "score", "name", "guess", "guess_why")], absent = absent)
 }
 
-quiz_posted <- function() {
-  p <- read_csv_quiet(admin_path("data", "quiz-posted.csv"))
-  if (is.null(p)) p <- data.frame(item = character(), huid = character(), score = character(), excused = character(), posted_at = character(), posted_by = character())
-  p
-}
-
-# Send scores (and EXCUSED) for one quiz to Canvas in one request.
-post_quiz <- function(item, canvas_id, rows, zero_for_absent = NULL, user = current_user()) {
-  require_admin(user, "post quiz grades to Canvas")
-  token <- canvas_token(); if (!nzchar(token)) stop("No Canvas token on this computer.")
-  co <- read_course(); if (!nzchar(co$canvas_course_id %||% "")) stop("Add canvas_course_id to course.yml.")
-  if (is.na(canvas_id) || !nzchar(canvas_id)) stop("Don't know the Canvas assignment for ", item, ".")
-  send <- rows[rows$status %in% c("post", "excused") & !is.na(rows$canvas_id), ]
-  if (!is.null(zero_for_absent) && nrow(zero_for_absent))
-    send <- rbind(send, data.frame(zero_for_absent[!is.na(zero_for_absent$canvas_id), ], score = 0, status = "post"))
-  if (!nrow(send)) stop("Nothing to post.")
-  form <- list()
-  for (i in seq_len(nrow(send))) {
-    key <- sprintf("grade_data[%s]", send$canvas_id[i])
-    if (send$status[i] == "excused") form[[paste0(key, "[excuse]")]] <- "true"
-    else form[[paste0(key, "[posted_grade]")]] <- as.character(send$score[i])
-  }
-  req <- httr2::request(co$canvas_url) |>
-    httr2::req_url_path_append("api", "v1", "courses", co$canvas_course_id, "assignments", canvas_id, "submissions", "update_grades") |>
-    httr2::req_auth_bearer_token(token) |> httr2::req_method("POST") |> httr2::req_body_form(!!!form)
-  httr2::req_perform(req)
-  p <- quiz_posted(); p <- p[p$item != item | !p$huid %in% send$huid, ]
-  p <- rbind(p, data.frame(item = item, huid = send$huid, score = ifelse(send$status == "excused", "", send$score),
-                           excused = send$status == "excused", posted_at = format(Sys.time(), "%Y-%m-%d %H:%M"),
-                           posted_by = acting_username(user)))
-  readr::write_csv(p, admin_path("data", "quiz-posted.csv"), na = "")
-  e <- read_exceptions(); k <- e$item == item & e$type == "excused" & tolower(e$github) %in% tolower(send$github[send$status == "excused"])
-  if (any(k)) { e$canvas_excused[k] <- TRUE; write_exceptions(e) }
-  log_action(acting_username(user), paste("posted quiz", item), sprintf("%d scores, %d excused", sum(send$status == "post"), sum(send$status == "excused")))
-  nrow(send)
-}
-
-# Record a quiz as posted without sending anything (it was posted another way).
-mark_quiz_posted <- function(item, user = current_user()) {
-  require_admin(user, "mark a quiz as posted")
-  p <- quiz_posted()
-  p <- rbind(p, data.frame(item = item, huid = "", score = "", excused = "", posted_at = format(Sys.time(), "%Y-%m-%d %H:%M"),
-                           posted_by = paste(acting_username(user), "(marked, not sent)")))
-  readr::write_csv(p, admin_path("data", "quiz-posted.csv"), na = "")
-  invisible(TRUE)
-}
-
-# Quiz files that haven't been posted yet.
+# Quiz files with nothing posted yet (posting: R/17-canvas-post.R).
 unposted_quiz_files <- function() {
   f <- list.files(pollev_dir(), pattern = "\\.csv$", full.names = TRUE)
+  f <- f[in_dashboard_scope(tolower(quiz_name_from_file(f)))]
   if (!length(f)) return(character())
-  done <- unique(quiz_posted()$item)
-  f[!tolower(quiz_name_from_file(f)) %in% tolower(done)]
+  done <- unique(tolower(read_canvas_log()$item))
+  f[!tolower(quiz_name_from_file(f)) %in% done]
 }

@@ -23,8 +23,9 @@
 #   The graded commit in the snapshot (and in graders' lists, if already
 #   assigned) is updated right away.
 #   Assign graders waits until every late student is reviewed.
-#   "Post late notices" sends each student with minutes > 0 a Canvas comment
-#   with their running total (and a 0 if they're over the allowance).
+#   Late notes (late_comment(): minutes late, running total, what's left) are
+#   posted as their own Canvas comment, after the feedback comment, when grades are posted
+#   on the Post to Canvas tab (R/17-canvas-post.R). Over the allowance = 0.
 # ---------------------------------------------------------------------------
 
 ledger_path <- function() admin_path("data", "late-ledger.csv")
@@ -101,6 +102,12 @@ compute_snapshot <- function(item) {
     if (nrow(x) && x$type[1] == "excused") { row$status <- "excused (no grade)"; return(row) }
     # An extension moves this student's deadline; everything else works the same.
     dl <- if (nrow(x) && x$type[1] == "extension" && !is.na(x$new_due[1])) x$new_due[1] else dl
+    # Still inside the extension: stays on the grader's list, but marked "wait".
+    # After the extension ends, update_extension_students() re-reads their
+    # commits and the graded version is picked as usual.
+    if (nrow(x) && x$type[1] == "extension" && !is.na(x$new_due[1]) && x$new_due[1] > now_et()) {
+      row$status <- "extension (waiting)"; return(row)
+    }
     if (b$repo_status != "ok") return(row)
     pick <- function(cutoff) { k <- mine[mine$time <= cutoff, ]; if (nrow(k)) k[which.max(k$time), ] else NULL }
     after <- mine[mine$time > dl, ]
@@ -140,7 +147,20 @@ compute_snapshot <- function(item) {
   sn
 }
 
-graded_statuses <- c("on time", "late", "extension", "late (allowed)", "deadline version")
+graded_statuses <- c("on time", "late", "extension", "late (allowed)", "deadline version", "extension (waiting)")
+gradeable <- function(sn) sn$status %in% graded_statuses & (!is.na(sn$sha) | sn$status == "extension (waiting)")
+
+# The grader's own list: usernames, commits, and "wait_until" for students
+# still inside an extension (graders can't see exceptions.csv).
+grader_list <- function(asg, g) {
+  mine <- asg[asg$grader %in% g, c("item", "github", "repo", "sha")]
+  ex <- read_exceptions(unique(asg$item))
+  ex <- ex[ex$type == "extension" & !is.na(ex$new_due) & ex$new_due > now_et(), ]
+  w <- ex$new_due[match(tolower(mine$github), tolower(ex$github))]
+  mine$wait_until <- ifelse(is.na(w), "", format(w, "%Y-%m-%d %H:%M", tz = "America/New_York"))
+  mine$sha[nzchar(mine$wait_until)] <- NA        # nothing to grade yet
+  mine
+}
 
 # If graders were already assigned, keep their lists right after a change:
 #   * graded commit changed (late decision, extension)  -> update the commit
@@ -151,10 +171,10 @@ sync_assignment <- function(item, sn) {
   asg <- read_assignments(item)
   if (is.null(asg)) return(invisible())
   it <- item_info(item); changed <- character()
-  ok <- sn[sn$status %in% graded_statuses & !is.na(sn$sha), ]
+  ok <- sn[gradeable(sn), ]
   # commits
   new <- ok$sha[match(asg$github, ok$github)]
-  k <- !is.na(new) & new != asg$sha
+  k <- !is.na(new) & (is.na(asg$sha) | asg$sha == "" | new != asg$sha)
   if (any(k)) { asg$sha[k] <- new[k]; changed <- c(changed, asg$github[k]) }
   # removals
   gone <- !asg$github %in% ok$github
@@ -178,16 +198,46 @@ sync_assignment <- function(item, sn) {
       changed <- c(changed, add$github[r])
     }
   }
-  if (!length(changed)) return(invisible())
   asg$status <- sn$status[match(asg$github, sn$github)]
   readr::write_csv(asg, admin_path("data", "assignments", paste0(item, ".csv")), na = "")
   for (g in unique(stats::na.omit(c(asg$grader, touched)))) {
     d <- file.path(course_root(), "graders", grader_folder_name(g), "grading", item)
     if (!dir.exists(d)) next
-    readr::write_csv(asg[asg$grader %in% g, c("item", "github", "repo", "sha")], file.path(d, "assignment.csv"), na = "")
+    readr::write_csv(grader_list(asg, g), file.path(d, "assignment.csv"), na = "")
     write_progress(g)
   }
-  log_action("system", paste("grader lists updated", item), paste(unique(changed), collapse = ", "))
+  if (length(changed)) log_action("system", paste("grader lists updated", item), paste(unique(changed), collapse = ", "))
+}
+
+# After an extension ends, read that student's commits again (they may have
+# pushed during the extension) and recompute the graded version.
+# Runs when an admin opens the dashboard; marks exceptions.csv refreshed_at.
+update_extension_students <- function(user = current_user()) {
+  if (!is_admin(user)) return(invisible(0))
+  e <- read_exceptions()
+  todo <- which(e$type == "extension" & !is.na(e$new_due) & e$new_due < now_et() &
+                (is.na(e$refreshed_at) | e$refreshed_at == ""))
+  n <- 0
+  for (k in todo) {
+    it <- e$item[k]
+    base <- read_csv_quiet(admin_path("data", "snapshots", paste0(it, "-students.csv")))
+    if (is.null(base)) next                         # submissions not found yet: nothing to update
+    info <- item_info(it); repo <- student_repo(info$repo, e$github[k])
+    cm <- tryCatch(repo_commits(repo, path = info$folder), error = function(err) NULL)
+    if (is.null(cm)) next
+    staff <- tolower(staff_logins())
+    cm <- cm[!tolower(cm$author) %in% staff & !grepl("\\[bot\\]$", cm$author), ]
+    all <- read_csv_quiet(admin_path("data", "snapshots", paste0(it, "-commits.csv")))
+    all <- all[tolower(all$github) != tolower(e$github[k]), ]
+    if (nrow(cm)) all <- rbind(all, data.frame(github = e$github[k], sha = cm$sha,
+      time = format(cm$time, "%Y-%m-%d %H:%M:%S", tz = "America/New_York"), author = cm$author, message = cm$message))
+    readr::write_csv(all, admin_path("data", "snapshots", paste0(it, "-commits.csv")), na = "")
+    e$refreshed_at[k] <- format(Sys.time(), "%Y-%m-%d %H:%M")
+    write_exceptions(e)
+    compute_snapshot(it)
+    n <- n + 1
+  }
+  invisible(n)
 }
 
 # --- the review ---------------------------------------------------------------
@@ -247,7 +297,7 @@ late_comment <- function(minutes_late, total_minutes, allowance) {
               allowance / 60, "-hour late allowance.")
 }
 
-# Notices not yet posted for this item. Returns a data.frame with the comment.
+# Late notes not yet posted for this item (preview on the Late tab).
 late_notices <- function(item) {
   it <- item_info(item)
   led <- read_ledger()
@@ -262,45 +312,4 @@ late_notices <- function(item) {
   todo$over <- todo$total_minutes > allowance_minutes()
   todo$comment <- mapply(late_comment, todo$minutes_late, todo$total_minutes, allowance_minutes())
   todo
-}
-
-canvas_put_submission <- function(assignment_id, canvas_user_id, comment = NULL, grade = NULL) {
-  token <- canvas_token()
-  if (!nzchar(token)) stop("No Canvas token on this computer (see docs/setup-canvas-token.md).")
-  co <- read_course()
-  if (!nzchar(co$canvas_course_id %||% "")) stop("Add canvas_course_id to course.yml.")
-  body <- list()
-  if (!is.null(comment)) body[["comment[text_comment]"]] <- comment
-  if (!is.null(grade)) body[["submission[posted_grade]"]] <- as.character(grade)
-  req <- httr2::request(co$canvas_url) |>
-    httr2::req_url_path_append("api", "v1", "courses", co$canvas_course_id, "assignments",
-                               assignment_id, "submissions", canvas_user_id) |>
-    httr2::req_auth_bearer_token(token) |>
-    httr2::req_method("PUT") |>
-    httr2::req_body_form(!!!body)
-  httr2::req_perform(req)
-  invisible(TRUE)
-}
-
-post_late_notices <- function(item, user = current_user()) {
-  require_admin(user, "post late notices to Canvas")
-  it <- item_info(item)
-  if (is.na(it$canvas_id)) stop("Add the Canvas assignment id for ", item, " to calendar.csv.")
-  n <- late_notices(item)
-  if (!nrow(n)) return(0)
-  led <- read_ledger(); sent <- 0; fails <- character()
-  for (i in seq_len(nrow(n))) {
-    if (is.na(n$canvas_id[i])) { fails <- c(fails, paste(n$username[i], "(no Canvas id)")); next }
-    ok <- tryCatch({ canvas_put_submission(it$canvas_id, n$canvas_id[i], n$comment[i], if (n$over[i]) 0 else NULL); TRUE },
-                   error = function(e) { fails <<- c(fails, paste(n$username[i], conditionMessage(e))); FALSE })
-    if (ok) {
-      k <- led$item %in% item & led$username == n$username[i]
-      led$posted[k] <- TRUE; led$posted_at[k] <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z", tz = "America/New_York")
-      sent <- sent + 1
-    }
-  }
-  save_ledger(led)
-  log_action(user$username, paste("post late notices", item), sprintf("%d sent; problems: %s", sent, paste(fails, collapse = "; ")))
-  if (length(fails)) stop(sprintf("%d sent, but not: %s", sent, paste(fails, collapse = "; ")))
-  sent
 }

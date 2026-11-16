@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # tab-late.R — admin only: extensions & excused (top), review late work,
-# post late notices. Logic: R/10-late.R and R/14-exceptions.R
+# preview late notes (they're sent with the grade on the Post to Canvas tab). Logic: R/10-late.R and R/14-exceptions.R
 # Logic and policy: R/10-late.R.  Decisions: admin/data/late-ledger.csv
 # ---------------------------------------------------------------------------
 
@@ -30,7 +30,7 @@ late_ui <- function(id) {
       shiny::div(style = "min-width: 280px;", shiny::selectInput(ns("item"), NULL, choices = NULL, width = "100%"))),
     shiny::uiOutput(ns("intro")),
     shiny::uiOutput(ns("cases")),
-    bslib::card(bslib::card_header(icon_tag("send"), " Late notices for Canvas"), shiny::uiOutput(ns("notices"))),
+    bslib::card(bslib::card_header(icon_tag("send"), " Late notes (sent with the grade)"), shiny::uiOutput(ns("notices"))),
     bslib::card(bslib::card_header("Late minutes so far this semester"), DT::DTOutput(ns("totals")))
   )
 }
@@ -170,24 +170,16 @@ late_server <- function(id, user, refresh) {
 
     output$notices <- shiny::renderUI({ tick(); shiny::req(input$item)
       n <- late_notices(input$item)
-      if (!nrow(n)) return(shiny::p(class = "text-muted", "Nothing to post for this homework."))
+      if (!nrow(n)) return(shiny::p(class = "text-muted", "No late notes waiting for this homework."))
       shiny::tagList(
-        shiny::p(sprintf("%d student(s) will get a comment on the Canvas assignment%s.", nrow(n),
+        shiny::p(sprintf("%d student(s) will get this note as a separate Canvas comment%s, when the grades are posted on the Post to Canvas tab.", nrow(n),
                          if (any(n$over)) sprintf(", and %d a grade of 0 (over the allowance)", sum(n$over)) else "")),
         shiny::tags$details(shiny::tags$summary("Preview"),
           lapply(seq_len(nrow(n)), function(i) shiny::div(class = "notice-preview",
             shiny::strong(n$username[i]), " ", shiny::span(class = "text-muted", n$name[i] %||% ""),
             if (n$over[i]) shiny::span(class = "badge bg-danger ms-1", "grade → 0"),
-            shiny::tags$pre(n$comment[i])))),
-        shiny::actionButton(ns("post"), sprintf("Post %d late notice(s) to Canvas", nrow(n)), class = "btn-primary mt-2"))
+            shiny::tags$pre(n$comment[i])))))
     })
-    shiny::observeEvent(input$post, {
-      res <- tryCatch(post_late_notices(input$item, user), error = function(e) e)
-      if (inherits(res, "error")) shiny::showNotification(conditionMessage(res), type = "error", duration = NULL)
-      else shiny::showNotification(sprintf("Posted %d notice(s).", res), type = "message")
-      bump()
-    })
-
     # --- extensions & excused ---
     shiny::observe({ refresh()
       cal <- read_calendar(); cal <- cal[cal$type %in% c("homework", "section"), ]
@@ -223,12 +215,12 @@ late_server <- function(id, user, refresh) {
             shiny::tags$td(sprintf("%s (%s)", st$name[match(tolower(e$github[i]), tolower(st$github))] %||% "", e$github[i])),
             shiny::tags$td(e$type[i]), shiny::tags$td(if (is.na(e$new_due[i])) "" else fmt_due(e$new_due[i])),
             shiny::tags$td(e$note[i] %||% ""),
-            shiny::tags$td(if (e$type[i] != "excused") "" else if (e$canvas_excused[i]) "marked excused" else shiny::span(class = "text-danger", "not yet")),
+            shiny::tags$td(if (e$type[i] != "excused") "" else if (e$canvas_excused[i]) "marked excused" else shiny::span(class = "text-muted", "not yet")),
             shiny::tags$td(paste(e$added_by[i] %||% "", e$added_at[i] %||% "")),
             shiny::tags$td(shiny::tags$button(class = "btn btn-outline-secondary btn-xs", type = "button",
               onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})", ns("x_remove"), paste(e$item[i], e$github[i], sep = "|")),
               "Remove")))))),
-        if (todo) shiny::actionButton(ns("x_canvas"), sprintf("Mark %d excused student(s) on Canvas", todo), class = "btn-primary btn-sm"))
+        if (todo) shiny::p(class = "small text-muted", sprintf("%d excused student(s) not marked on Canvas yet: that happens when you post the item on the Post to Canvas tab.", todo)))
     })
     shiny::observeEvent(input$x_remove, {
       p <- strsplit(input$x_remove, "|", fixed = TRUE)[[1]]
@@ -236,13 +228,6 @@ late_server <- function(id, user, refresh) {
       if (is.null(res)) shiny::showNotification("Removed.", type = "message") else shiny::showNotification(res, type = "error", duration = NULL)
       bump()
     })
-    shiny::observeEvent(input$x_canvas, {
-      res <- tryCatch(post_excused(user), error = function(e) e)
-      if (inherits(res, "error")) shiny::showNotification(conditionMessage(res), type = "error", duration = NULL)
-      else shiny::showNotification(sprintf("Marked %d as excused on Canvas.", res), type = "message")
-      bump()
-    })
-
     output$totals <- DT::renderDT({ tick()
       led <- read_ledger(); if (!nrow(led)) return(NULL)
       tot <- late_totals(Inf, led)

@@ -34,8 +34,10 @@
 
 **Section work** is graded on completion: pick 100%, 90%, … 10%, or "Not submitted".
 
-You can change a grade any time before grades are posted: tick "Include students
-I've already graded", pick the student, change, Save.
+To change a grade: tick "Include students I've already graded", pick the
+student, change, Save. If grades were already posted to Canvas, your change
+goes to the admin team's "changed since posted" list and they re-post it (this
+is also how regrades reach Canvas).
 
 Your grades are saved in your own folder (`stat100-grader-<you>/grading/<item>/grades.csv`).
 Only you and the admin team can see them.

@@ -65,6 +65,8 @@ fmt_due <- function(x) {
   format(x, "%a %b %d, %l:%M %p", tz = "America/New_York")
 }
 
+fmt_short <- function(x) { t <- parse_when(x); ifelse(is.na(t), "", format(t, "%b %d, %l:%M %p", tz = "America/New_York")) }
+
 empty_state <- function(msg) shiny::div(class = "empty-state", msg)
 
 # Admins: a menu to open the dashboard as someone else (see user_for_request()).

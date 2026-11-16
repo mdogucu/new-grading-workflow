@@ -81,7 +81,7 @@ my_calendar <- function(user) {
   # Quizzes: only for the quiz grader
   if (is_admin(user) && tolower(me) %in% tolower(trimws(strsplit(read_course()$quiz_grader %||% "", ",")[[1]]))) {
     q <- cal[cal$type %in% "quiz" & !is.na(cal$grading_due), ]
-    posted <- tolower(unique(quiz_posted()$item))
+    posted <- tolower(unique(read_canvas_log()$item))
     for (i in seq_len(nrow(q))) add(q$grading_due[i], sprintf("Grade %s", q$item[i]), q$title[i],
       if (tolower(q$item[i]) %in% posted) "done" else if (q$grading_due[i] < now) "overdue" else "coming up", "quiz")
   }

@@ -22,7 +22,10 @@ write_progress <- function(grader) {
   if (!length(its)) return(invisible(FALSE))
   rows <- do.call(rbind, lapply(its, function(it) {
     a <- my_assignment(grader, it); g <- read_grades(grader, it)
-    data.frame(item = it, assigned = nrow(a), graded = sum(unique(g$github) %in% a$github),
+    w <- if (("wait_until" %in% names(a))) parse_when(a$wait_until) else rep(NA, nrow(a))
+    wait <- (!is.na(w) & w > now_et()) | is.na(a$sha) | a$sha == ""
+    a <- a[!wait, ]                                       # extensions not counted yet
+    data.frame(item = it, assigned = nrow(a), graded = sum(unique(g$github) %in% a$github), waiting = sum(wait),
                last_saved = if (nrow(g)) max(g$saved_at, na.rm = TRUE) else "")
   }))
   rows$updated_at <- format(Sys.time(), "%Y-%m-%d %H:%M")
@@ -36,7 +39,7 @@ write_progress <- function(grader) {
 read_progress <- function() {
   f <- list.files(progress_dir(), pattern = "\\.csv$", full.names = TRUE)
   if (!length(f)) return(NULL)
-  p <- do.call(rbind, lapply(f, function(x) {
+  p <- dplyr::bind_rows(lapply(f, function(x) {
     d <- read_csv_quiet(x); if (is.null(d) || !nrow(d)) return(NULL)
     d$grader <- sub("\\.csv$", "", basename(x)); d
   }))
@@ -45,12 +48,50 @@ read_progress <- function() {
   p
 }
 
-# Admins: rebuild everyone's progress file straight from the grader folders.
+# Admins: rebuild everyone's progress file straight from the grader folders,
+# and the combined grade files (collect_grades) for every assigned item.
 refresh_all_progress <- function(user = current_user()) {
   require_admin(user, "refresh grading progress")
   s <- read_staff(FALSE)
   for (g in s$username[!is.na(s$username) & s$username != ""]) write_progress(g)
+  its <- sub("\\.csv$", "", list.files(admin_path("data", "assignments"), pattern = "^[a-z]+[0-9]+[a-z]?\\.csv$"))
+  for (it in its) try(collect_grades(it), silent = TRUE)
   invisible(TRUE)
+}
+
+# All graders' grades for one item, in one place (admins only — has names):
+#   admin/data/grades/<item>.csv         one row per student x question
+#     (github, name, section, question, codes, rubric_points, adjustment,
+#      points, max_points, feedback, grader, saved_at, sha)
+#   admin/data/grades/<item>-totals.csv  one row per student
+#     (github, name, section, grader, status, points, max_points, percent)
+#     status: graded / not graded yet / extension (waiting) / excused / ...
+collect_grades <- function(item) {
+  asg <- read_assignments(item); if (is.null(asg)) return(invisible(NULL))
+  sn <- read_snapshot(item); st <- read_students()
+  rows <- do.call(rbind, lapply(unique(stats::na.omit(asg$grader)), function(g) {
+    x <- read_grades(g, item); x[x$github %in% asg$github[asg$grader %in% g], , drop = FALSE]
+  }))
+  if (is.null(rows)) rows <- read_grades("", item)[0, ]
+  m <- match(tolower(rows$github), tolower(st$github))
+  rows <- cbind(rows["github"], name = st$name[m], section = st$section[m], rows[setdiff(names(rows), "github")])
+  out <- admin_path("data", "grades"); dir.create(out, showWarnings = FALSE, recursive = TRUE)
+  readr::write_csv(rows, file.path(out, paste0(item, ".csv")), na = "")
+  # totals: everyone in the snapshot, graded or not
+  everyone <- if (!is.null(sn)) sn[, c("github", "status")] else data.frame(github = asg$github, status = "")
+  tot <- if (nrow(rows)) stats::aggregate(cbind(points, max_points) ~ github, data = rows, FUN = sum) else
+    data.frame(github = character(), points = numeric(), max_points = numeric())
+  m2 <- match(tolower(everyone$github), tolower(st$github))
+  t2 <- data.frame(github = everyone$github, name = st$name[m2], section = st$section[m2],
+                   grader = asg$grader[match(everyone$github, asg$github)],
+                   status = ifelse(everyone$github %in% tot$github, "graded",
+                             ifelse(everyone$github %in% asg$github, ifelse(everyone$status == "extension (waiting)", "extension (waiting)", "not graded yet"),
+                                    everyone$status)),
+                   points = tot$points[match(everyone$github, tot$github)],
+                   max_points = tot$max_points[match(everyone$github, tot$github)])
+  t2$percent <- round(100 * t2$points / t2$max_points, 1)
+  readr::write_csv(t2[order(t2$section, t2$name), ], file.path(out, paste0(item, "-totals.csv")), na = "")
+  invisible(t2)
 }
 
 # Items worth showing: grading due from 10 days ago to 14 days ahead,

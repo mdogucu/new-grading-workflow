@@ -92,8 +92,9 @@ past weeks as they were.
 `item, github, type, new_due, note, added_by, added_at, canvas_excused`
 - `extension`: that student's deadline for that item is `new_due`.
 - `excused`: the student doesn't do it — not graded, not assigned, and marked
-  EXCUSED on Canvas (button "Mark … excused on Canvas"; `canvas_excused`
-  becomes TRUE). Removing an excuse un-excuses it on Canvas too.
+  EXCUSED on Canvas when you post that item on the **Post to Canvas** tab
+  (`canvas_excused` becomes TRUE). Removing an excuse un-excuses it on Canvas
+  too, and the student's grade is then posted like anyone else's.
 Enter them before or after the deadline; if submissions were already found,
 the graded commits and graders' lists update right away.
 
@@ -134,9 +135,10 @@ After the deadline **plus the late window** (course.yml `late_window_hours`):
    week; weeks 1–7 were imported from your old late-submissions-ledger.csv).
    Each student has a semester-wide allowance (course.yml
    `late_allowance_hours`, 48). If a homework takes them over it, it gets 0
-   and isn't graded. **Post late notices** sends each student with late
-   minutes a Canvas comment with their running total (and the 0, if over),
-   same wording as the old script.
+   and isn't graded. The late note (minutes late, running total, what's left
+   of the 48 hours; same wording as the old script) is posted as its own
+   Canvas comment, after the feedback comment, on **Post to Canvas**.
+   A student over the allowance gets 0 and just the late note.
    **Sections** aren't part of the allowance and no minutes are counted.
    A section counts as late only if the section file itself changed after the
    section deadline (homework pushes don't count). You choose **Allowed**
@@ -156,6 +158,22 @@ After the deadline **plus the late window** (course.yml `late_window_hours`):
 3. Watch progress in the same card. CAs' grades are in their folders:
    `grading/<item>/grades.csv` (one row per student × question: codes like
    `1---2`, rubric points, adjustment, final points, and the feedback text).
+4. **All grades in one place** (admins): every time an admin opens the
+   dashboard (or clicks Rebuild on Progress), the graders' files are combined into
+   - `admin/data/grades/<item>.csv`: every student × question from every
+     grader (codes, points, feedback, who graded it, when, which commit);
+   - `admin/data/grades/<item>-totals.csv`: one row per student with
+     total points, percent, and status (graded / not graded yet /
+     extension (waiting) / excused / missing).
+   These are rebuilt from the graders' files, so edit grades in the
+   graders' files (or the dashboard), not here.
+
+Extensions after assigning: if a student gets an extension (Late & excused)
+after they were assigned, they stay on the same grader's list, shown as
+"extension until …: not yet". The grader can't grade them and they don't
+count as unfinished. Once the extension is over, the next time an admin opens
+the dashboard the student's latest commit is fetched and they become gradeable
+for that same grader, so nobody grades them twice.
 
 Rubrics are made on the **Rubrics** tab: pick the homework, "Load questions
 from the homework" (reads them from the week's template on GitHub), fill in
@@ -174,14 +192,44 @@ e.g. `quiz11b_gradebook_1773914.csv`). It then shows up on My tasks as
 - Students are matched by **email**, then by name. Anyone who doesn't match
   (e.g. "Unregistered") is listed; pick the student once and it's remembered
   (`config/pollev-matches.csv`; "Unregistered" matches are for that quiz only).
-- The Canvas assignment comes from the Canvas gradebook export
-  ("quiz11b (1135126)"); you can also type the id.
-- Excused students (Late & excused tab) are marked EXCUSED on Canvas;
-  students with an extension are skipped.
-- Optionally give 0 to students not in the file (the old script didn't).
-- Posted scores are recorded in `data/quiz-posted.csv`. For a quiz you already
-  posted another way, use "Already posted another way — mark as done".
-- Who gets the quiz to-dos: course.yml `quiz_grader`.
+- Then post it on the **Post to Canvas** tab (below). Excused students are
+  marked EXCUSED; students with an extension wait; optionally give 0 to
+  students not in the file (the old script didn't).
+- The Canvas assignment comes from calendar.csv or the Canvas gradebook
+  export ("quiz11b (1135126)"); you can also type the id on Post to Canvas.
+- Who gets the quiz to-dos (and sees quizzes on Post to Canvas): course.yml
+  `quiz_grader`.
+
+## Post to Canvas (dashboard ▸ Post to Canvas; admins)
+
+Everything that goes to Canvas is sent from this one tab: homework and section
+grades with their feedback comments, late notes, 0 for over the late
+allowance, EXCUSED, and quiz scores. Pick the item, check, click Post.
+
+- **Homework / section score** = sum of the question points the graders saved.
+  **Comment** = same layout as the old 11-release-feedback.R / 14-release-
+  section-feedback.R ("### Assignment Feedback", one bullet per question with
+  points and the feedback text, "**Total Score:** x / y"). Late homework gets
+  the late note as a second, separate comment. Canvas adds comments; it never
+  overwrites an earlier one.
+- Only students who are completely graded are posted. Students not graded
+  yet, with an extension still running, or with late work not reviewed wait;
+  you can post the others now and the rest show up later.
+- Students with no submission aren't posted unless you tick "Give 0".
+- Click a student in the table to see exactly what will be sent.
+- **Regrades**: every post is recorded in `data/canvas-posted.csv` (score
+  and the exact comment sent). If a grade or its feedback changes afterwards
+  (someone regrades it on the Grading tab), the student shows up as
+  **changed since posted**, and My tasks says so. Posting updates the score
+  and adds one more comment, "### Regrade comment", listing only the
+  questions that changed (old → new points, new feedback) and the updated
+  total. The original feedback comment stays as it was.
+- Click a student to see the new comment(s) and every comment already
+  posted to them.
+- "Already posted another way — mark these as posted" records them without
+  sending anything.
+- Canvas calls: `submissions/update_grades` (same as the old scripts), up to
+  25 students per call, waiting for Canvas to say "completed".
 
 ## inputs/ — downloads you drop in
 
@@ -207,6 +255,12 @@ If something looks wrong here, fix the input or add an override, then refresh.
 - `github-check.csv` — last "Check GitHub organization" (Students tab):
   who's in the org but not on the list (probably dropped), who hasn't joined.
 - `dismissed-tasks.csv` — My tasks items you dismissed. Delete a row to bring it back.
+- `canvas-posted.csv` — everything sent to Canvas (Post to Canvas tab): item,
+  canvas_user_id, github, name, action (grade / excuse / zero), score, the
+  exact comment, kind (first / update / marked), posted_at, posted_by. The
+  newest row per student is what Canvas has; deleting rows makes those
+  students "ready to post" again.
+- `grades/` — all graders' grades combined per item (see Weekly grading).
 
 ## repos/ — copies of student repos opened by admins
 Graders' copies live in their own folders (`graders/stat100-grader-<user>/repos/`).

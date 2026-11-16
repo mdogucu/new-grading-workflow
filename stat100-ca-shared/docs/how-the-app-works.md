@@ -24,10 +24,14 @@ One Shiny app, `app/app.R`, used by everyone. When it starts it:
 | `R/07-theme.R` | colors, fonts, logo, View as menu |
 | `R/08-github.R` | GitHub commit lists, local copies of student repos |
 | `R/09-grading.R` | find submissions, assign graders, rubrics, scoring, splitting a .qmd / .html by question |
-| `R/10-late.R` | late homework/section review, 48-hour allowance, Canvas late notices |
+| `R/10-late.R` | late homework/section review, 48-hour allowance, the late note wording |
 | `R/11-github-org.R` | GitHub organization vs. the student list; removing people |
 | `R/12-progress.R` | grading progress files (for the grading monitor's Progress tab) |
 | `R/13-rubrics.R` | building and checking rubrics (Rubrics tab) |
+| `R/14-exceptions.R` | extensions and excused work |
+| `R/15-quizzes.R` | Poll Everywhere files: matching rows to students |
+| `R/16-canvas-sync.R` | filling calendar.csv from Canvas assignments |
+| `R/17-canvas-post.R` | everything sent to Canvas: scores, feedback comments, late notes, EXCUSED, regrade changes |
 | `R/tab-*.R` | one file per tab: `*_ui()` draws it, `*_server()` makes it work |
 | `www/` | logo, `styles.css`, `app.js` (copy buttons), bundled fonts/icons |
 

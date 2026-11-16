@@ -22,6 +22,8 @@
 #   R/14-exceptions.R  extensions and excused work (incl. EXCUSED on Canvas)
 #   R/15-quizzes.R     Poll Everywhere quiz files -> Canvas
 #   R/16-canvas-sync.R fill calendar.csv from the assignments in Canvas
+#   R/17-canvas-post.R everything sent to Canvas: scores, feedback, late notes,
+#                      EXCUSED, and regrade changes after posting
 #   R/tab-*.R          one file per tab (UI + server)
 # ===========================================================================
 
@@ -45,6 +47,7 @@ ui <- function(req) {
     if (user$role %in% c("admin", "ca")) bslib::nav_panel("Grading", value = "grading", icon = icon_tag("pencil-square"), grading_ui("grading", user)),
     if (admin) bslib::nav_panel("Late & excused", value = "late", icon = icon_tag("hourglass-split"), late_ui("late")),
     if (admin) bslib::nav_panel("Quizzes", value = "quizzes", icon = icon_tag("patch-question"), quizzes_ui("quizzes")),
+    if (admin) bslib::nav_panel("Post to Canvas", value = "canvas", icon = icon_tag("send"), canvas_ui("canvas")),
     if (admin) bslib::nav_panel("Rubrics", value = "rubrics", icon = icon_tag("ui-checks"), rubrics_ui("rubrics")),
     if (admin) bslib::nav_panel("Students", value = "students", icon = icon_tag("people"), students_ui("students")),
     if (admin) bslib::nav_panel("Staff", value = "staff", icon = icon_tag("person-badge"), staff_ui("staff")),
@@ -72,6 +75,14 @@ navbar_bg <- function(col) {
 server <- function(input, output, session) {
   user <- user_for_request(shiny::isolate(session$clientData$url_search))
   go_to <- function(tab) bslib::nav_select("nav", tab, session = session)
+  # When an admin opens the dashboard (also in "View as"), rebuild every
+  # grader's progress file from the grader folders, so the Progress tab is
+  # complete even for graders who haven't opened the dashboard yet.
+  real <- user$viewed_by %||% user
+  if (is_admin(real)) {
+    try(update_extension_students(real), silent = TRUE)   # extensions that just ended
+    try(refresh_all_progress(real), silent = TRUE)
+  }
   tasks_server("tasks", user, go_to)
   calendar_server("calendar", user)
   setup_server("setup", user)
@@ -85,6 +96,7 @@ server <- function(input, output, session) {
     late_server("late", user, refresh)
     rubrics_server("rubrics", user)
     quizzes_server("quizzes", user, refresh)
+    canvas_server("canvas", user, refresh)
   }
 }
 
