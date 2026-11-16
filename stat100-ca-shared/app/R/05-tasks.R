@@ -93,12 +93,22 @@ check_staff <- function() {
     if (length(bad)) out[[length(out) + 1]] <- task(
       sprintf("monitor-overrides.csv lists someone who isn't a senior CA: %s", paste(bad, collapse = ", ")),
       "Fix the file, or set senior = TRUE in staff.csv.", tab = "staff")
+    # Who is on hold right now: this week's monitor + anyone marked on_hold.
+    w <- current_week()
+    held <- s[s$role == "ca" & s$on_hold & !is.na(s$username), ]
+    if (!is.na(w) && nrow(held)) {
+      lab <- ifelse(held$monitor_this_week, paste0(held$name, " (grading monitor)"), held$name)
+      out[[length(out) + 1]] <- task(sprintf("On hold this week: %s", paste(lab, collapse = ", ")),
+        sprintf("Week %d (from %s). They aren't given homework when you assign graders; they still grade their own section.",
+                w, format(ms$week_of[ms$week == w], "%b %d")),
+        tab = "staff", level = "info", id = paste0("on-hold-week-", w, "-", paste(sort(held$username), collapse = "-")))
+    }
     nw <- current_week(today_et() + 7)
     if (!is.na(nw)) {
       m <- ms$monitor[ms$week == nw]
       nm <- s$name[match(tolower(m), tolower(s$username))]
       out[[length(out) + 1]] <- task(sprintf("Next week's grading monitor: %s", nm %||% m),
-        sprintf("Week %d starts %s. They'll be on hold from grading.", nw, format(ms$week_of[ms$week == nw], "%b %d")),
+        sprintf("Week %d starts %s. They'll be on hold from homework grading (they still grade their section).", nw, format(ms$week_of[ms$week == nw], "%b %d")),
         tab = "staff", level = "info")
     }
   }
@@ -155,6 +165,19 @@ check_calendar <- function() {
     sprintf("%d calendar item(s) without due dates", length(blank)),
     paste("Fill student_due and grading_due in admin/config/calendar.csv:", paste(head(blank, 8), collapse = ", "),
           if (length(blank) > 8) "…" else ""), tab = "calendar", level = "info")
+  # Possible typos: grading due on/before the student deadline, or very long after it.
+  ok <- !is.na(cal$student_due) & !is.na(cal$grading_due) & in_dashboard_scope(cal$item)
+  gap <- as.numeric(difftime(cal$grading_due, cal$student_due, units = "days"))
+  bad <- ok & gap <= 0
+  far <- ok & gap > 14
+  if (any(bad)) out[[length(out) + 1]] <- task(
+    sprintf("Check calendar.csv: grading due before students' due date (%s)", paste(cal$item[bad], collapse = ", ")),
+    paste(sprintf("%s: students %s, grading %s", cal$item[bad], fmt_short(cal$student_due[bad]), fmt_short(cal$grading_due[bad])), collapse = "; "),
+    tab = "calendar", level = "overdue", id = paste0("cal-order-", paste(cal$item[bad], format(cal$grading_due[bad], "%m%d"), collapse = "-")))
+  if (any(far)) out[[length(out) + 1]] <- task(
+    sprintf("Check calendar.csv: grading due more than 2 weeks after students' due date (%s)", paste(cal$item[far], collapse = ", ")),
+    paste(sprintf("%s: students %s, grading %s", cal$item[far], fmt_short(cal$student_due[far]), fmt_short(cal$grading_due[far])), collapse = "; "),
+    tab = "calendar", level = "info", id = paste0("cal-far-", paste(cal$item[far], format(cal$grading_due[far], "%m%d"), collapse = "-")))
   dplyr::bind_rows(out)
 }
 

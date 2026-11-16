@@ -83,6 +83,7 @@ server <- function(input, output, session) {
   real <- user$viewed_by %||% user
   if (is_admin(real)) {
     try(update_extension_students(real), silent = TRUE)   # extensions that just ended
+    try(if (course_info_stale()) publish_course_info(real), silent = TRUE)   # CAs read calendar/sections/staff from course-info/
     try(publish_section_rosters(real), silent = TRUE)     # each CA's section students (R/18-sections.R)
     try(refresh_all_progress(real), silent = TRUE)
   }

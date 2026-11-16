@@ -76,9 +76,12 @@ Dates can be `2026-09-29` (means 11:59 pm), `2026-09-29 17:00`, or what a
 spreadsheet writes (`9/29/26 17:00`).
 
 ### Grading monitor (automatic) and monitor-overrides.csv (optional)
-Each week one senior CA (senior = TRUE) is the **grading monitor** and is
-automatically **on hold** from grading that week. The pick is random but fair:
-weeks are grouped in blocks of 4 (one per senior CA), each block is a shuffle
+Each week one senior CA (senior = TRUE) **who teaches a section** (leader in
+sections.csv) is the **grading monitor** and is automatically **on hold** from
+homework grading that week (it's the week you click Assign graders). The
+monitor still grades their own section's work. Senior CAs without a section
+(e.g. Siri) are not in the rotation. The pick is random but fair:
+weeks are grouped in blocks (one per rotating senior CA), each block is a shuffle
 using `set.seed(block number)`, so everyone gets the same number of turns and
 the result never changes when the app is re-run. The Staff & sections tab shows
 the whole semester.

@@ -113,7 +113,12 @@ read_monitor_overrides <- function() {
 monitor_schedule <- function(staff = clean_staff(read_csv_quiet(config_path("staff.csv")))) {
   cw <- course_weeks()
   if (is.null(cw)) return(NULL)
-  seniors <- sort(staff$username[staff$senior & !is.na(staff$username) & staff$username != ""])
+  # Only senior CAs who teach a section rotate (the monitor is on hold for
+  # homework, so it has to be someone who still has their section to grade).
+  sec <- read_sections()
+  sec_col <- if ("section" %in% names(staff)) as.character(staff$section) else rep(NA_character_, nrow(staff))
+  teaches <- tolower(staff$username) %in% tolower(sec$leader) | (!is.na(sec_col) & nzchar(trimws(sec_col)))
+  seniors <- sort(staff$username[staff$senior & teaches & !is.na(staff$username) & staff$username != ""])
   cw$monitor <- NA_character_; cw$source <- "random"
   n <- length(seniors)
   if (n > 0) {
@@ -202,6 +207,15 @@ read_coi <- function() {
   names(coi) <- trimws(sub("^﻿", "", names(coi)))
   coi$student <- trimws(coi$student); coi$grader <- trimws(coi$grader)
   coi
+}
+
+# Publish again if anything in admin/config that CAs read changed since the
+# last publish (runs when an admin opens the dashboard).
+course_info_stale <- function() {
+  src <- admin_path("config", c("course.yml", "calendar.csv", "sections.csv", "staff.csv", "monitor-overrides.csv"))
+  src <- src[file.exists(src)]
+  pub <- shared_path("course-info", basename(src))
+  any(!file.exists(pub)) || any(file.mtime(src) > file.mtime(pub))
 }
 
 # Copy the non-private config to the shared folder so CAs' apps can read it.

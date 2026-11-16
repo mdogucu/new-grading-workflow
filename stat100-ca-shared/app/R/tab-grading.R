@@ -316,7 +316,13 @@ grading_server <- function(id, user) {
               shiny::div(class = "d-flex justify-content-between align-items-end",
                 shiny::tags$label(`for` = ns(paste0("fb_", i)), "Feedback the student will see"),
                 shiny::actionLink(ns(paste0("rebuild_", i)), "Rebuild from rubric", class = "small")),
-              shiny::textAreaInput(ns(paste0("fb_", i)), NULL, value = fb0, rows = 4, width = "100%"))))
+              shiny::textAreaInput(ns(paste0("fb_", i)), NULL, value = fb0, rows = 4, width = "100%"),
+              # Saves the WHOLE page (every question), not just this one —
+              # so there's always a save button nearby on long homework.
+              shiny::div(class = "text-end",
+                shiny::tags$button(type = "button", class = "btn btn-outline-primary btn-sm",
+                  onclick = sprintf("Shiny.setInputValue('%s', Date.now(), {priority: 'event'})", ns("save_any")),
+                  icon_tag("check2"), " Save all")))))
       })
       shiny::tagList(header, cards,
         shiny::div(class = "save-bar",
@@ -424,6 +430,21 @@ grading_server <- function(id, user) {
     shiny::observeEvent(input$mark_clear, mark(""))
     shiny::observeEvent(input$student, shiny::updateRadioButtons(session, "version", selected = "deadline"), ignoreInit = TRUE)
 
+    # Another item on this grader's list with students still to grade.
+    next_item_with_work <- function() {
+      its <- unique(c(my_items(grader()), tryCatch(section_items_for(grader()), error = function(e) character())))
+      cal <- read_calendar(); its <- setdiff(its, input$item)
+      its <- its[order(cal$grading_due[match(its, cal$item)], na.last = TRUE)]   # soonest due first
+      unopened <- its[!its %in% my_items(grader())]            # section lists not opened yet
+      for (it in setdiff(its, unopened)) {
+        a <- my_assignment(grader(), it); if (is.null(a) || !nrow(a)) next
+        w <- if ("wait_until" %in% names(a)) parse_when(a$wait_until) else rep(NA, nrow(a))
+        a <- a[!((!is.na(w) & w > now_et()) | is.na(a$sha) | a$sha == ""), ]
+        if (any(!a$github %in% read_grades(grader(), it)$github)) return(it)
+      }
+      if (length(unopened)) unopened[1] else NA_character_     # probably work there; it loads when opened
+    }
+
     do_save <- function() {
       q <- qs(); r <- rubric()
       codes <- lapply(seq_len(nrow(q)), current_codes)
@@ -448,13 +469,20 @@ grading_server <- function(id, user) {
       ok
     }
     shiny::observeEvent(input$save, if (do_save()) saved_tick(saved_tick() + 1))
+    shiny::observeEvent(input$save_any, if (do_save()) saved_tick(saved_tick() + 1))
     shiny::observeEvent(input$save_next, {
       if (!do_save()) return()
       a <- asg(); cur <- input$student
       saved_tick(saved_tick() + 1)
       left <- a$github[!a$github %in% c(done(), cur, waiting())]
-      if (length(left)) shiny::updateSelectInput(session, "student", selected = left[1])
-      else shiny::showNotification("That was the last one — all done!", type = "message", duration = 8)
+      if (length(left)) { shiny::updateSelectInput(session, "student", selected = left[1]); return() }
+      # Done with this item: go to the next one that still has students left.
+      nxt <- next_item_with_work()
+      if (!is.na(nxt)) {
+        shiny::showNotification(sprintf("%s is done. Moving on to %s.", input$item, nxt), type = "message", duration = 8)
+        shiny::updateSelectInput(session, "item", selected = nxt)
+      } else shiny::showNotification(sprintf("That was the last one for %s, and nothing else is waiting for you. All done!", input$item),
+                                     type = "message", duration = 10)
     })
   })
 }
