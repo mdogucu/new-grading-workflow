@@ -31,7 +31,11 @@ late_ui <- function(id) {
     shiny::uiOutput(ns("intro")),
     shiny::uiOutput(ns("cases")),
     bslib::card(bslib::card_header(icon_tag("send"), " Late notes (sent with the grade)"), shiny::uiOutput(ns("notices"))),
-    bslib::card(bslib::card_header("Late minutes so far this semester"), DT::DTOutput(ns("totals")))
+    bslib::card(bslib::card_header("Late minutes so far this semester"), DT::DTOutput(ns("totals"))),
+    bslib::card(bslib::card_header(icon_tag("people"), " Late section work (marked by the CAs)"),
+      shiny::p(class = "small text-muted", "Section work is the section CA's call: they see what was committed after section and mark",
+               "\"Late — warned\" or \"Not late\". Extensions and excused students (above) are never flagged."),
+      DT::DTOutput(ns("sec_late")))
   )
 }
 
@@ -42,7 +46,7 @@ late_server <- function(id, user, refresh) {
     bump <- function() { tick(tick() + 1); refresh(refresh() + 1) }
 
     shiny::observe({ refresh()
-      cal <- read_calendar(); cal <- cal[cal$type %in% c("homework", "section") & !is.na(cal$student_due), ]
+      cal <- read_calendar(); cal <- cal[cal$type %in% "homework" & !is.na(cal$student_due), ]   # sections: the CA decides
       cal <- cal[order(cal$student_due, decreasing = TRUE), ]
       has <- file.exists(admin_path("data", "snapshots", paste0(cal$item, "-commits.csv")))
       cal <- cal[has, ]
@@ -228,6 +232,18 @@ late_server <- function(id, user, refresh) {
       if (is.null(res)) shiny::showNotification("Removed.", type = "message") else shiny::showNotification(res, type = "error", duration = NULL)
       bump()
     })
+    output$sec_late <- DT::renderDT({ tick(); refresh()
+      s <- read_staff(FALSE); m <- section_late_counts(s$username[!is.na(s$username) & nzchar(s$username)])
+      m <- m[m$decision == "late", ]
+      if (!nrow(m)) return(DT::datatable(data.frame(Note = "No late section work marked yet."), rownames = FALSE, options = list(dom = "t")))
+      st <- read_students()
+      agg <- stats::aggregate(item ~ github, data = m, FUN = function(x) paste(sort(unique(x)), collapse = ", "))
+      agg$times <- as.integer(table(tolower(m$github))[tolower(agg$github)])
+      agg$name <- st$name[match(tolower(agg$github), tolower(st$github))]
+      agg <- agg[order(-agg$times), c("name", "github", "times", "item")]
+      DT::datatable(stats::setNames(agg, c("Student", "GitHub", "Late sections", "Which")), rownames = FALSE, options = list(dom = "ftp", pageLength = 15))
+    })
+
     output$totals <- DT::renderDT({ tick()
       led <- read_ledger(); if (!nrow(led)) return(NULL)
       tot <- late_totals(Inf, led)

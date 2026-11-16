@@ -184,7 +184,12 @@ grader_item_dir <- function(grader, item) {
   file.path(d, "grading", item)
 }
 
-my_assignment <- function(grader, item) read_csv_quiet(file.path(grader_item_dir(grader, item), "assignment.csv"))
+# (Section lists also record students with no submission; they aren't graded.)
+my_assignment <- function(grader, item) {
+  a <- read_csv_quiet(file.path(grader_item_dir(grader, item), "assignment.csv"))
+  if (!is.null(a) && "status" %in% names(a)) a <- a[is.na(a$status) | a$status != "no submission", ]
+  a
+}
 
 # Items that have an assignment file for this grader.
 my_items <- function(grader) {

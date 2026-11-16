@@ -44,7 +44,10 @@ admin_ui <- function(id) {
             "Reads each student's commit list on GitHub (nothing is downloaded) and picks the graded commit. Homework with commits after the deadline goes to the Late work tab for review."),
           shiny::actionButton(ns("g_assign"), "2. Assign graders", class = "btn-primary w-100 mb-2"),
           shiny::tags$small(class = "text-muted d-block",
-            "Homework: shuffled with set.seed(week), split evenly among active CAs, skipping conflicts. Section: to the section leader. Running it again redoes it (the old file is kept).")),
+            "Shuffled with set.seed(week), split evenly among active CAs, skipping conflicts. Running it again redoes it (the old file is kept)."),
+          shiny::div(class = "alert alert-info small mt-3", icon_tag("people"),
+            " Section activities need nothing here: each CA's list of their own section builds itself when they open the Grading tab,",
+            " and the CA decides about work committed after section. Times come from admin/config/sections.csv.")),
         shiny::uiOutput(ns("g_status")))),
     bslib::card(bslib::card_header("Recent actions"), DT::DTOutput(ns("log")))
   )
@@ -83,7 +86,7 @@ admin_server <- function(id, user, refresh) {
 
     # --- weekly grading ---
     shiny::observe({ tick()
-      cal <- read_calendar(); cal <- cal[!is.na(cal$student_due) & cal$type %in% c("homework", "section"), ]
+      cal <- read_calendar(); cal <- cal[!is.na(cal$student_due) & cal$type %in% "homework", ]
       cal <- cal[order(cal$student_due, decreasing = TRUE), ]
       shiny::updateSelectInput(session, "g_item", choices = item_choices(cal$item, cal$title, "Add due dates in calendar.csv first"),
                                selected = { cur <- shiny::isolate(input$g_item); if (!nrow(cal)) "" else if (!is.null(cur) && cur %in% cal$item) cur else cal$item[1] })

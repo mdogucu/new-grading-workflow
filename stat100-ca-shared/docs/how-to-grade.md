@@ -34,6 +34,19 @@
 
 **Section work** is graded on completion: pick 100%, 90%, … 10%, or "Not submitted".
 
+Your section's students appear on their own after your section ends: pick the
+section item (e.g. sec11) on the Grading tab and the dashboard reads their
+commits (click "Check for new commits" to look again later). You see each
+student's work **as it was at the end of your section**. Students who pushed
+after your section ended have a ⏰ next to their name and a yellow box:
+- Switch to their newest version if you want to grade that instead.
+- You know what you covered in section, so you decide: **Late — warn the
+  student** (an email is filled in for you to send) or **Not late** (they just
+  kept working after finishing what was required).
+- The box also tells you if you've marked that student late before.
+Students with an extension show "not yet" until their new deadline; excused
+students aren't on your list.
+
 To change a grade: tick "Include students I've already graded", pick the
 student, change, Save. If grades were already posted to Canvas, your change
 goes to the admin team's "changed since posted" list and they re-post it (this

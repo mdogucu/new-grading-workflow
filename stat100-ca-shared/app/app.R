@@ -24,6 +24,8 @@
 #   R/16-canvas-sync.R fill calendar.csv from the assignments in Canvas
 #   R/17-canvas-post.R everything sent to Canvas: scores, feedback, late notes,
 #                      EXCUSED, and regrade changes after posting
+#   R/18-sections.R    section activities: each CA grades their own section,
+#                      lists build themselves, the CA decides about late work
 #   R/tab-*.R          one file per tab (UI + server)
 # ===========================================================================
 
@@ -81,6 +83,7 @@ server <- function(input, output, session) {
   real <- user$viewed_by %||% user
   if (is_admin(real)) {
     try(update_extension_students(real), silent = TRUE)   # extensions that just ended
+    try(publish_section_rosters(real), silent = TRUE)     # each CA's section students (R/18-sections.R)
     try(refresh_all_progress(real), silent = TRUE)
   }
   tasks_server("tasks", user, go_to)

@@ -27,7 +27,10 @@ regrade window. Each line has a comment explaining it.
 
 ### sections.csv
 `section, day, time, location, leader` — leader is the GitHub username of the
-CA/TF who teaches it and grades its section work.
+CA/TF who teaches it and grades its section work every week.
+`day` (e.g. Friday) and `time` (e.g. `10:30 - 11:45 am`) matter: the END of
+that meeting in the item's week is the section deadline (sec11 → Friday
+11:45 am of week 11). If they're blank, the calendar's student_due is used.
 
 ### Where the dashboard starts
 Everything up to hw09/sec09/quiz11b was graded the old way. course.yml
@@ -139,11 +142,7 @@ After the deadline **plus the late window** (course.yml `late_window_hours`):
    of the 48 hours; same wording as the old script) is posted as its own
    Canvas comment, after the feedback comment, on **Post to Canvas**.
    A student over the allowance gets 0 and just the late note.
-   **Sections** aren't part of the allowance and no minutes are counted.
-   A section counts as late only if the section file itself changed after the
-   section deadline (homework pushes don't count). You choose **Allowed**
-   (grade the late work, e.g. the student was sick) or **Not allowed** (grade
-   the version at the deadline).
+   **Sections** don't come here at all (see "Section activities" below).
 2. **Assign graders** — saves `data/assignments/<item>.csv` and copies each
    CA's list (usernames + commits only) to their folder,
    `graders/stat100-grader-<user>/grading/<item>/assignment.csv`.
@@ -181,6 +180,31 @@ points and options, Check, Save. Older versions go to `rubrics/old/`.
 Rubrics live in `stat100-ca-shared/rubrics/<item>-rubric.csv` (section items
 fall back to `section-rubric.csv`). The rubric's question names ("Question 1ii")
 must match the homework's headings ("## Question 1") and part labels ("ii.").
+
+## Section activities (nothing for admins to do)
+
+- No Find submissions, no Assign graders. Each CA grades their own section's
+  students every week (sections.csv `leader`). A student with a conflict of
+  interest goes to another CA (always the same one).
+- The dashboard writes each CA's roster into their folder
+  (`graders/stat100-grader-<user>/my-students.csv`, and `my-exceptions.csv`
+  with section extensions/excused) whenever an admin opens the dashboard,
+  refreshes the student list, or adds/removes an extension or excuse.
+- After their section ends, the CA opens the Grading tab and picks the item;
+  their list builds itself from GitHub (again every 15 minutes, or with
+  "Check for new commits"). It shows the **version at the end of section**.
+- If a student committed after the end of section, the CA sees a box with
+  the times, can switch to the **newest version**, and marks
+  **Late — warned** (an email to the student is filled in from
+  `templates/section-late.txt`) or **Not late** (extra work after section).
+  Marks: `grading/<item>/late-marks.csv` in the CA's folder. The CA sees how
+  many times that student was marked late before.
+- Extensions and excused (Late & excused tab) work for sections too: an
+  extension moves that student's deadline (so no "after section" flag),
+  excused students aren't on the CA's list and are marked EXCUSED on Canvas.
+- Late & excused tab ▸ "Late section work" lists every student the CAs
+  marked late, with how many times.
+- Code: `R/18-sections.R`.
 
 ## Quizzes (dashboard ▸ Quizzes; Mine)
 

@@ -132,7 +132,8 @@ regrade_comment <- function(new_q, old_q, new_score, old_score) {
 canvas_items <- function(user) {
   cal <- read_calendar(); if (is.null(cal)) cal <- data.frame(item = character(), type = character(), week = integer(), title = character())
   hs <- cal[cal$type %in% c("homework", "section") & vapply(cal$item, in_dashboard_scope, TRUE), ]
-  hs <- hs[file.exists(admin_path("data", "snapshots", paste0(hs$item, ".csv"))), ]
+  hs <- hs[file.exists(admin_path("data", "snapshots", paste0(hs$item, ".csv"))) |
+           (hs$type == "section" & !is.na(hs$student_due) & hs$student_due < now_et()), ]
   out <- data.frame(item = hs$item, title = hs$title, type = hs$type, week = hs$week)
   if (is_quiz_grader(user)) {
     f <- list.files(pollev_dir(), pattern = "\\.csv$")
@@ -184,8 +185,8 @@ canvas_queue <- function(item, zero_missing = FALSE) {
 }
 
 hw_queue <- function(item, it, zero_missing, st) {
-  sn <- read_snapshot(item); if (is.null(sn)) return(NULL)
-  asg <- read_assignments(item)
+  sn <- item_snapshot(item); if (is.null(sn)) return(NULL)
+  asg <- item_assignments(item)
   # everyone's saved grades for this item
   g <- if (!is.null(asg)) do.call(rbind, lapply(unique(stats::na.omit(asg$grader)), function(gr) {
     x <- read_grades(gr, item); x[x$github %in% asg$github[asg$grader %in% gr], , drop = FALSE] })) else NULL
@@ -207,6 +208,8 @@ hw_queue <- function(item, it, zero_missing, st) {
     if (s == "excused (no grade)") { q$action[i] <- "excuse"; next }
     if (s == "extension (waiting)") { q$state[i] <- "extension (waiting)"; next }
     if (s == "needs review") { q$state[i] <- "needs late review"; next }
+    if (s == "not loaded yet") { q$state[i] <- "not graded yet"
+      q$detail[i] <- sprintf("%s hasn't opened it on the Grading tab yet", sn$grader[i] %||% "the CA"); next }
     if (s == "over allowance (0)") {
       q$action[i] <- "grade"; q$score[i] <- 0; q$late[i] <- late_note; next }
     if (s %in% graded_statuses && !is.na(sn$sha[i])) {

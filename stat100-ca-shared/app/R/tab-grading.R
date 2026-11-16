@@ -5,11 +5,15 @@
 #       buttons to open the work (GitHub / rendered file / R project).
 # Right: one card per rubric question: the student's answer (lines they wrote
 #       are highlighted), the rubric options to click, an optional points
-#       adjustment (e.g. -0.001 for something minor), and the feedback text the
+#       adjustment (e.g. -0.001 for something minor; section work: in %), and the feedback text the
 #       student will see — filled in from the rubric for the ticked options and
 #       editable. Once edited by hand, ticking options no longer overwrites it
 #       (click "Rebuild from rubric" to start over).
 # Section items use the completion picker (100%, 90%, … 10%, not submitted).
+# Section lists build themselves (R/18-sections.R): the version at the end of
+# section is shown; if the student committed after section, a box lets the CA
+# switch to the newest version, mark "Late — warned" / "Not late", and
+# email the student (templates/section-late.txt).
 #
 # Grades are saved to the grader's own folder: grading/<item>/grades.csv.
 # Copies of student repos are made on this computer in ~/stat100-grading-repos.
@@ -24,6 +28,7 @@ grading_ui <- function(id, user) {
       if (is_admin(user)) shiny::selectInput(ns("as"), "Grading as", choices = NULL),
       shiny::selectInput(ns("item"), "Assignment", choices = NULL),
       shiny::uiOutput(ns("progress")),
+      shiny::uiOutput(ns("section_tools")),
       shiny::selectInput(ns("student"), "Student (GitHub username)", choices = NULL),
       shiny::checkboxInput(ns("show_done"), "Include students I've already graded", FALSE),
       shiny::uiOutput(ns("open_buttons")),
@@ -51,17 +56,49 @@ grading_server <- function(id, user) {
       shiny::updateSelectInput(session, "as", choices = if (length(have)) have else user$username)
     }
 
+    built <- shiny::reactiveVal(0)      # bumps when a section list is (re)built
+    late_tick <- shiny::reactiveVal(0)
     shiny::observe({
-      its <- my_items(grader())
+      built()
+      its <- unique(c(my_items(grader()), tryCatch(section_items_for(grader()), error = function(e) character())))
       cal <- read_calendar()
       if (length(its)) {
         its <- its[order(-match(its, cal$item))]   # newest first
         lab <- paste0(its, " · ", cal$title[match(its, cal$item)])
-        shiny::updateSelectInput(session, "item", choices = stats::setNames(its, lab))
+        cur <- shiny::isolate(input$item)
+        shiny::updateSelectInput(session, "item", choices = stats::setNames(its, lab),
+                                 selected = if (!is.null(cur) && cur %in% its) cur else its[1])
       } else shiny::updateSelectInput(session, "item", choices = c("Nothing assigned yet" = ""))
     })
 
-    asg <- shiny::reactive({ shiny::req(input$item); my_assignment(grader(), input$item) })
+    is_section <- shiny::reactive({ shiny::req(input$item); grepl("^sec", input$item) })
+    build_now <- function() {
+      res <- shiny::withProgress(message = sprintf("Checking your section's commits for %s…", input$item), value = 0,
+        tryCatch(build_section_list(grader(), input$item, progress = function(v, d) shiny::setProgress(v, detail = d)),
+                 error = function(e) e))
+      if (inherits(res, "error")) shiny::showNotification(conditionMessage(res), type = "error", duration = NULL)
+      built(built() + 1)
+    }
+    # Section: build (or refresh) the list when it's opened.
+    shiny::observeEvent(list(input$item, grader()), {
+      shiny::req(nzchar(input$item %||% ""))
+      if (grepl("^sec", input$item) && input$item %in% tryCatch(section_items_for(grader()), error = function(e) character()) &&
+          section_list_stale(grader(), input$item)) build_now()
+    })
+    shiny::observeEvent(input$recheck, build_now())
+    output$section_tools <- shiny::renderUI({
+      shiny::req(is_section()); a <- asg(); built()
+      all <- read_csv_quiet(file.path(grader_item_dir(grader(), input$item), "assignment.csv"))
+      nos <- if (!is.null(all) && "status" %in% names(all)) all$github[all$status %in% "no submission"] else character()
+      after <- if (!is.null(a) && "status" %in% names(a)) sum(a$status %in% "after section") else 0
+      shiny::div(class = "small mb-2",
+        if (after) shiny::div(class = "text-warning-emphasis", icon_tag("clock-history"), sprintf(" %d committed after section — you decide if it's late", after)),
+        if (length(nos)) shiny::tags$details(shiny::tags$summary(sprintf("%d with no submission", length(nos))), paste(nos, collapse = ", ")),
+        shiny::actionLink(ns("recheck"), shiny::tagList(icon_tag("arrow-repeat"), " Check for new commits")),
+        if (!is.null(all) && "built_at" %in% names(all) && nzchar(all$built_at[1] %||% "")) shiny::span(class = "text-muted", " · checked ", fmt_short(all$built_at[1])))
+    })
+
+    asg <- shiny::reactive({ built(); shiny::req(input$item); my_assignment(grader(), input$item) })
     grades <- shiny::reactive({ saved_tick(); shiny::req(input$item); read_grades(grader(), input$item) })
     rubric <- shiny::reactive({ shiny::req(input$item); read_rubric(input$item) })
     info <- shiny::reactive({ shiny::req(input$item); item_info(input$item) })
@@ -96,23 +133,34 @@ grading_server <- function(id, user) {
       if (isTRUE(input$show_done)) ch <- c(ch, setdiff(a$github, ch))
       wl <- if (("wait_until" %in% names(a))) a$wait_until[match(ch, a$github)] else rep("", length(ch))
       lab <- ifelse(ch %in% done(), paste(ch, "\u2713"),
-               ifelse(ch %in% wt, paste0(ch, "  (extension", ifelse(!is.na(wl) & nzchar(wl), paste0(" until ", fmt_short(wl)), ""), ": not yet)"), ch))
+               ifelse(ch %in% wt, paste0(ch, "  (", ifelse(!is.na(wl) & nzchar(wl), paste0("until ", fmt_short(wl)), "extension"), ": not yet)"),
+                 ifelse(ch %in% after_ids(), paste(ch, "\u23f0"), ch)))
       sel <- shiny::isolate(input$student)
       shiny::updateSelectInput(session, "student", choices = stats::setNames(ch, lab),
                                selected = if (!is.null(sel) && sel %in% ch) sel else ch[1])
     })
+
+    after_ids <- shiny::reactive({ a <- asg(); if (is.null(a) || !"status" %in% names(a)) character() else a$github[a$status %in% "after section"] })
 
     row <- shiny::reactive({
       a <- asg(); shiny::req(input$student, a, input$student %in% a$github)   # wait until the list has caught up
       shiny::req(!input$student %in% waiting())                               # nothing to download yet
       a[a$github == input$student, ][1, ] })
 
+    # Which version: for section work committed after section, the version at
+    # the end of section (default) or the newest if the CA switches to it.
+    gsha <- shiny::reactive({
+      r <- row()
+      has_dl <- "deadline_sha" %in% names(r) && !is.na(r$deadline_sha) && nzchar(r$deadline_sha)
+      if (has_dl && !identical(input$version, "newest")) r$deadline_sha else r$sha
+    })
+
     # Local copy of the student's repo at the graded commit.
     repo_dir <- shiny::reactive({
-      r <- row(); it <- info()
+      r <- row(); it <- info(); sha <- gsha()
       dest <- file.path(local_repos_dir(user), it$repo, it$folder, r$repo)
       shiny::withProgress(message = paste("Getting", r$github, "'s work…"), value = 0.5, {
-        tryCatch(checkout_copy(r$repo, r$sha, dest), error = function(e) {
+        tryCatch(checkout_copy(r$repo, sha, dest), error = function(e) {
           shiny::showNotification(paste("Couldn't download the repo:", conditionMessage(e)), type = "error", duration = NULL)
           NA_character_ })
       })
@@ -142,10 +190,10 @@ grading_server <- function(id, user) {
       path <- if (!is.na(qmd)) paste0(it$folder, "/", basename(qmd)) else NULL
       shiny::div(class = "d-grid gap-2",
         shiny::tags$a(class = "btn btn-outline-primary btn-sm", target = "_blank",
-                      href = github_url(r$repo, r$sha, path), icon_tag("github"), " Open on GitHub (graded version)"),
+                      href = github_url(r$repo, gsha(), path), icon_tag("github"), " Open on GitHub (this version)"),
         shiny::actionButton(ns("open_html"), "Open rendered file", icon = icon_tag("file-earmark-richtext"), class = "btn-outline-primary btn-sm"),
         shiny::actionButton(ns("open_proj"), "Open R project", icon = icon_tag("folder2-open"), class = "btn-outline-primary btn-sm"),
-        shiny::tags$small(class = "text-muted mono", sprintf("commit %s", substr(r$sha, 1, 7))))
+        shiny::tags$small(class = "text-muted mono", sprintf("commit %s", substr(gsha(), 1, 7))))
     })
 
     # Students don't commit their .html (it's in .gitignore), so we render
@@ -186,7 +234,8 @@ grading_server <- function(id, user) {
         for (i in seq_len(n)) {
           shiny::incProgress(1 / n, detail = a$github[i])
           dest <- file.path(local_repos_dir(user), it$repo, it$folder, a$repo[i])
-          ok <- tryCatch({ checkout_copy(a$repo[i], a$sha[i], dest); TRUE }, error = function(e) FALSE)
+          sha <- if ("deadline_sha" %in% names(a) && !is.na(a$deadline_sha[i]) && nzchar(a$deadline_sha[i])) a$deadline_sha[i] else a$sha[i]
+          ok <- tryCatch({ checkout_copy(a$repo[i], sha, dest); TRUE }, error = function(e) FALSE)
           if (!ok) fails <- c(fails, a$github[i])
         }
       })
@@ -200,12 +249,13 @@ grading_server <- function(id, user) {
 
     output$main <- shiny::renderUI({
       if (is.null(asg())) return(empty_state("No grading assigned to you yet."))
+      if (!nrow(asg())) return(empty_state(if (is_section()) "No submissions from your section yet. Click \"Check for new commits\" on the left to look again." else "Nobody to grade here."))
       if (isTRUE(input$student %in% waiting())) {
         a <- asg(); w <- if (("wait_until" %in% names(a))) a$wait_until[a$github == input$student][1] else ""
         return(shiny::div(class = "alert alert-info mt-3", icon_tag("hourglass-split"),
-          shiny::strong(sprintf(" %s has an extension", input$student)),
-          if (!is.na(w) && nzchar(w)) sprintf(" until %s.", fmt_short(w)) else ".",
-          shiny::p(class = "mb-0 mt-2", "Don't grade them yet. They stay on your list; once the extension is over, the version",
+          shiny::strong(sprintf(" %s: not yet", input$student)),
+          if (!is.na(w) && nzchar(w)) sprintf(" — their deadline is %s (extension, or their section hasn't ended).", fmt_short(w)) else " — they have an extension.",
+          shiny::p(class = "mb-0 mt-2", "Don't grade them yet. They stay on your list; once the deadline has passed, the version",
                    "to grade is updated and they'll show up like everyone else.")))
       }
       r <- rubric(); q <- qs()
@@ -223,6 +273,7 @@ grading_server <- function(id, user) {
         shiny::uiOutput(ns("total")),
         if (nrow(prev)) shiny::span(class = "badge bg-success", "graded — saving again replaces it"))
 
+      header <- shiny::tagList(header, shiny::uiOutput(ns("late_box")))
       if (is.null(lines)) header <- shiny::tagList(header,
         shiny::div(class = "alert alert-warning", "Couldn't find this student's file. Use the buttons on the left to look at the repo."))
 
@@ -248,6 +299,7 @@ grading_server <- function(id, user) {
         fb0 <- if (nrow(p) && !is.na(p$feedback[1])) p$feedback[1] else feedback_text(r, qn, sel)
         auto[[as.character(i)]] <- feedback_text(r, qn, sel)
         adj0 <- if (nrow(p) && !is.na(p$adjustment[1])) p$adjustment[1] else 0
+        if (is_completion() && q$max_points[i] > 0) adj0 <- round(adj0 * 100 / q$max_points[i], 4)   # shown as a percent
         bslib::card(class = "question-card",
           bslib::card_header(shiny::div(class = "d-flex justify-content-between",
             shiny::span(qn), shiny::uiOutput(ns(paste0("score_", i)), inline = TRUE))),
@@ -257,8 +309,10 @@ grading_server <- function(id, user) {
               bslib::nav_panel("Output (.html)", rendered_view(hp, qn, is_completion(), ns))),
             shiny::div(choice_ui,
               shiny::div(class = "adjust-row",
-                shiny::numericInput(ns(paste0("adj_", i)), "Adjust points (+/−)", value = adj0, step = 0.25, width = "150px"),
-                shiny::tags$small(class = "text-muted", "e.g. −0.001 for something minor; explain it in the feedback.")),
+                if (is_completion()) shiny::numericInput(ns(paste0("adj_", i)), "Adjust (+/− %)", value = adj0, step = 5, width = "150px")
+                else shiny::numericInput(ns(paste0("adj_", i)), "Adjust points (+/−)", value = adj0, step = 0.25, width = "150px"),
+                shiny::tags$small(class = "text-muted", if (is_completion()) "Percentage points, e.g. −5 or +5; explain it in the feedback."
+                                  else "e.g. −0.001 for something minor; explain it in the feedback.")),
               shiny::div(class = "d-flex justify-content-between align-items-end",
                 shiny::tags$label(`for` = ns(paste0("fb_", i)), "Feedback the student will see"),
                 shiny::actionLink(ns(paste0("rebuild_", i)), "Rebuild from rubric", class = "small")),
@@ -273,8 +327,14 @@ grading_server <- function(id, user) {
 
     # live scores (rubric + adjustment)
     current_codes <- function(i) input[[paste0("codes_", i)]] %||% character()
+    # The adjustment in points. Section (completion) work is adjusted in
+    # percent of the total, so it's converted here; grades.csv stores points.
+    adj_points <- function(q, i) {
+      a <- suppressWarnings(as.numeric(input[[paste0("adj_", i)]])); if (!length(a) || is.na(a)) a <- 0
+      if (is_completion()) a * q$max_points[i] / 100 else a
+    }
     current_points <- function(r, q, i)
-      final_points(score_question(r, q$question[i], current_codes(i)), input[[paste0("adj_", i)]], q$max_points[i])
+      final_points(score_question(r, q$question[i], current_codes(i)), adj_points(q, i), q$max_points[i])
     shiny::observe({
       q <- qs(); r <- rubric(); shiny::req(q)
       lapply(seq_len(nrow(q)), function(i) {
@@ -321,6 +381,49 @@ grading_server <- function(id, user) {
         shiny::updateCheckboxGroupInput(session, paste0("codes_", i), selected = "0")
     })
 
+    # --- section work committed after section: the CA's call ---------------
+    late_box <- function() {
+      r <- tryCatch(row(), error = function(e) NULL)
+      if (is.null(r) || !"status" %in% names(r) || !identical(r$status, "after section")) return(NULL)
+      late_tick()
+      m <- read_late_marks(grader(), input$item); m <- m[m$github == r$github, ]
+      prior <- section_late_counts(grader()); prior <- prior[tolower(prior$github) == tolower(r$github) & prior$decision == "late" & prior$item != input$item, ]
+      has_dl <- !is.na(r$deadline_sha) && nzchar(r$deadline_sha %||% "")
+      ver <- input$version %||% "deadline"   # not isolated: the box is redrawn with the current choice
+      shiny::div(class = "alert alert-warning late-box",
+        shiny::div(icon_tag("clock-history"), shiny::strong(sprintf(" Committed after section: %s commit%s after %s", r$late_commits,
+          if (identical(as.character(r$late_commits), "1")) "" else "s", fmt_short(r$deadline))), sprintf(" (last one %s).", fmt_short(r$commit_time))),
+        shiny::div(class = "small", if (nrow(prior)) shiny::strong(sprintf("Marked late before: %d time%s (%s). ", nrow(prior),
+          if (nrow(prior) == 1) "" else "s", paste(prior$item, collapse = ", "))),
+          "Only you know what was covered in section, so it's your call."),
+        if (has_dl) shiny::radioButtons(ns("version"), "Grade which version?", inline = TRUE, selected = ver,
+          choices = stats::setNames(c("deadline", "newest"), c(sprintf("At the end of section (%s)", fmt_short(r$deadline_commit_time)),
+                                                               sprintf("Newest (%s)", fmt_short(r$commit_time)))))
+        else shiny::div(class = "small", "There was no commit before the end of section, so only the newest version exists."),
+        shiny::div(class = "d-flex gap-2 align-items-center flex-wrap",
+          if (nrow(m)) shiny::span(class = if (m$decision[1] == "late") "badge bg-danger" else "badge bg-success",
+                                   if (m$decision[1] == "late") "Marked: late — warned" else "Marked: not late"),
+          shiny::actionButton(ns("mark_late"), "Late — warn the student", class = "btn-outline-danger btn-sm"),
+          shiny::actionButton(ns("mark_ok"), "Not late (extra work after section)", class = "btn-outline-success btn-sm"),
+          if (nrow(m)) shiny::actionLink(ns("mark_clear"), "undo", class = "small")),
+        if (nrow(m) && m$decision[1] == "late") {
+          ros <- my_section_students(grader()); s <- ros[tolower(ros$github) == tolower(r$github), ]
+          nm <- s$name[1] %||% ""; first <- trimws(sub("^[^,]*,\\s*", "", nm)); first <- sub(" .*$", "", first)
+          shiny::tags$details(class = "mt-2", open = NA, shiny::tags$summary("Email to the student"),
+            email_panel_ui(ns("late_mail"), stats::na.omit(s$email[1]),
+              fill_template("section-late", list(first_name = if (nzchar(first)) first else r$github, item = input$item,
+                deadline = fmt_short(r$deadline), last_commit = fmt_short(r$commit_time), sender = user$name))))
+        })
+    }
+    output$late_box <- shiny::renderUI(late_box())
+    mark <- function(decision) {
+      save_late_mark(grader(), input$item, input$student, decision, by = acting_username(user)); late_tick(late_tick() + 1)
+    }
+    shiny::observeEvent(input$mark_late, mark("late"))
+    shiny::observeEvent(input$mark_ok, mark("not late"))
+    shiny::observeEvent(input$mark_clear, mark(""))
+    shiny::observeEvent(input$student, shiny::updateRadioButtons(session, "version", selected = "deadline"), ignoreInit = TRUE)
+
     do_save <- function() {
       q <- qs(); r <- rubric()
       codes <- lapply(seq_len(nrow(q)), current_codes)
@@ -330,7 +433,7 @@ grading_server <- function(id, user) {
         return(FALSE)
       }
       rp <- vapply(seq_len(nrow(q)), function(i) score_question(r, q$question[i], codes[[i]]), 0)
-      adj <- vapply(seq_len(nrow(q)), function(i) { a <- suppressWarnings(as.numeric(input[[paste0("adj_", i)]])); if (!length(a) || is.na(a)) 0 else a }, 0)
+      adj <- vapply(seq_len(nrow(q)), function(i) adj_points(q, i), 0)
       rows <- data.frame(
         question = q$question,
         codes = vapply(codes, paste, "", collapse = "---"),
@@ -338,7 +441,7 @@ grading_server <- function(id, user) {
         points = vapply(seq_len(nrow(q)), function(i) final_points(rp[i], adj[i], q$max_points[i]), 0),
         max_points = q$max_points,
         feedback = vapply(seq_len(nrow(q)), function(i) trimws(input[[paste0("fb_", i)]] %||% ""), ""),
-        sha = row()$sha, stringsAsFactors = FALSE)
+        sha = gsha(), stringsAsFactors = FALSE)
       ok <- tryCatch({ save_student_grades(grader(), input$item, input$student, rows, acting_username(user)); TRUE },
                      error = function(e) { shiny::showNotification(paste("Not saved:", conditionMessage(e)), type = "error", duration = NULL); FALSE })
       if (ok) { shiny::showNotification(sprintf("Saved %s.", input$student), type = "message"); write_progress(grader()) }

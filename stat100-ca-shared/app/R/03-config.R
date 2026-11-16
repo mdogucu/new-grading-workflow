@@ -219,6 +219,7 @@ publish_course_info <- function(user = current_user()) {
   writeLines(c("These files are written by the dashboard (Admin tab > Publish course info).",
                "Do not edit them here — edit admin/config/ and publish again."),
              file.path(out, "README.txt"))
+  try(publish_section_rosters(user), silent = TRUE)
   log_action(user$username, "publish course info", out)
   invisible(out)
 }

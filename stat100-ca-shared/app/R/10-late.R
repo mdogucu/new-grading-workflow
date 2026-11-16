@@ -147,7 +147,8 @@ compute_snapshot <- function(item) {
   sn
 }
 
-graded_statuses <- c("on time", "late", "extension", "late (allowed)", "deadline version", "extension (waiting)")
+graded_statuses <- c("on time", "late", "extension", "late (allowed)", "deadline version", "extension (waiting)",
+                     "after section")   # sections: committed after section, the CA decides (R/18-sections.R)
 gradeable <- function(sn) sn$status %in% graded_statuses & (!is.na(sn$sha) | sn$status == "extension (waiting)")
 
 # The grader's own list: usernames, commits, and "wait_until" for students

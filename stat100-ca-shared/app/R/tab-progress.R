@@ -10,7 +10,8 @@ progress_ui <- function(id, user) {
     shiny::div(class = "page-head", shiny::h2("Grading progress"),
       shiny::actionButton(ns("reload"), "Check again", icon = icon_tag("arrow-clockwise"), class = "btn-outline-secondary btn-sm"),
       if (is_admin(user)) shiny::actionButton(ns("rebuild"), "Rebuild from grader folders", class = "btn-outline-secondary btn-sm")),
-    shiny::p(class = "text-muted", "Counts update whenever a grader opens the Grading tab or saves a grade."),
+    shiny::p(class = "text-muted", "Counts update whenever a grader opens the Grading tab or saves a grade, and when an admin opens the dashboard.",
+             "Section work counts each CA's whole section, even before they open it."),
     shiny::uiOutput(ns("items")))
 }
 
@@ -44,7 +45,8 @@ progress_server <- function(id, user) {
                 shiny::tags$td(style = "width: 45%;", shiny::div(class = "progress", style = "height: 12px;",
                   shiny::div(class = paste0("progress-bar bar-", lvl), style = sprintf("width:%d%%;", pct)))),
                 shiny::tags$td(sprintf("%d / %d", d$graded[i], d$assigned[i]), " ",
-                  shiny::span(class = paste0("pill pill-", lvl), c(ok = "Done", overdue = "Overdue", todo = "Not started", info = "In progress")[[lvl]])),
+                  shiny::span(class = paste0("pill pill-", lvl), c(ok = "Done", overdue = "Overdue", todo = "Not started", info = "In progress")[[lvl]]),
+                  if (!isTRUE(d$opened[i])) shiny::span(class = "small text-muted ms-1", "· hasn't opened it yet")),
                 shiny::tags$td(class = "small text-muted", d$last_saved[i] %||% ""))
             }))),
           if (is_admin(user)) shiny::div(class = "small mb-2",

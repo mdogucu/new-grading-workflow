@@ -18,15 +18,27 @@ progress_dir <- function() shared_path("progress")
 
 # Summarise one grader's folder and write their progress file.
 write_progress <- function(grader) {
-  its <- my_items(grader)
+  # Section items count even before the CA opens them (their list builds
+  # itself on the Grading tab): until then, "assigned" = their section roster
+  # (minus excused) and opened = FALSE.
+  sec_its <- tryCatch(section_items_for(grader), error = function(e) character())
+  its <- unique(c(my_items(grader), sec_its))
   if (!length(its)) return(invisible(FALSE))
   rows <- do.call(rbind, lapply(its, function(it) {
-    a <- my_assignment(grader, it); g <- read_grades(grader, it)
+    g <- read_grades(grader, it)
+    a0 <- if (it %in% sec_its) read_csv_quiet(file.path(grader_item_dir(grader, it), "assignment.csv")) else NULL
+    if (!it %in% my_items(grader) || (it %in% sec_its && (is.null(a0) || !"built_at" %in% names(a0)))) {
+      ros <- my_section_students(grader); x <- my_section_exceptions(grader, it)
+      n <- sum(!tolower(ros$github) %in% tolower(x$github[x$type %in% "excused"]))
+      return(data.frame(item = it, assigned = n, graded = length(unique(g$github)), waiting = 0L,
+                        last_saved = if (nrow(g)) max(g$saved_at, na.rm = TRUE) else "", opened = FALSE))
+    }
+    a <- my_assignment(grader, it)
     w <- if (("wait_until" %in% names(a))) parse_when(a$wait_until) else rep(NA, nrow(a))
     wait <- (!is.na(w) & w > now_et()) | is.na(a$sha) | a$sha == ""
     a <- a[!wait, ]                                       # extensions not counted yet
     data.frame(item = it, assigned = nrow(a), graded = sum(unique(g$github) %in% a$github), waiting = sum(wait),
-               last_saved = if (nrow(g)) max(g$saved_at, na.rm = TRUE) else "")
+               last_saved = if (nrow(g)) max(g$saved_at, na.rm = TRUE) else "", opened = TRUE)
   }))
   rows$updated_at <- format(Sys.time(), "%Y-%m-%d %H:%M")
   tryCatch({
@@ -45,6 +57,7 @@ read_progress <- function() {
   }))
   if (is.null(p)) return(NULL)
   p$assigned <- as.integer(p$assigned); p$graded <- as.integer(p$graded)
+  p$opened <- if ("opened" %in% names(p)) !(toupper(as.character(p$opened)) %in% "FALSE") else TRUE
   p
 }
 
@@ -55,6 +68,8 @@ refresh_all_progress <- function(user = current_user()) {
   s <- read_staff(FALSE)
   for (g in s$username[!is.na(s$username) & s$username != ""]) write_progress(g)
   its <- sub("\\.csv$", "", list.files(admin_path("data", "assignments"), pattern = "^[a-z]+[0-9]+[a-z]?\\.csv$"))
+  cal <- read_calendar()                                   # sections: no assignment file (R/18-sections.R)
+  its <- unique(c(its, cal$item[cal$type %in% "section" & in_dashboard_scope(cal$item) & !is.na(cal$student_due) & cal$student_due < now_et()]))
   for (it in its) try(collect_grades(it), silent = TRUE)
   invisible(TRUE)
 }
@@ -67,8 +82,8 @@ refresh_all_progress <- function(user = current_user()) {
 #     (github, name, section, grader, status, points, max_points, percent)
 #     status: graded / not graded yet / extension (waiting) / excused / ...
 collect_grades <- function(item) {
-  asg <- read_assignments(item); if (is.null(asg)) return(invisible(NULL))
-  sn <- read_snapshot(item); st <- read_students()
+  asg <- item_assignments(item); if (is.null(asg) || !nrow(asg)) return(invisible(NULL))
+  sn <- item_snapshot(item); st <- read_students()
   rows <- do.call(rbind, lapply(unique(stats::na.omit(asg$grader)), function(g) {
     x <- read_grades(g, item); x[x$github %in% asg$github[asg$grader %in% g], , drop = FALSE]
   }))

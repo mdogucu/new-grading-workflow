@@ -150,6 +150,7 @@ refresh_students <- function(user = current_user()) {
   out <- shared_path("course-info"); dir.create(out, showWarnings = FALSE, recursive = TRUE)
   pub <- st[!is.na(st$github), c("github", "section")]
   readr::write_csv(pub, file.path(out, "students.csv"), na = "")
+  try(publish_section_rosters(user), silent = TRUE)        # each CA's section roster (R/18-sections.R)
   log_action(user$username, "refresh students",
              paste(basename(attr(st, "files")), collapse = ", "))
   invisible(st)

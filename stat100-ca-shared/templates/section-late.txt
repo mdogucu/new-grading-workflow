@@ -1,0 +1,14 @@
+Subject: {course}: your {item} section activity was submitted late
+
+Hi {first_name},
+
+I'm grading the {item} section activity, and it looks like it was pushed to
+GitHub after our section ended ({deadline}). Your last commit was {last_commit}.
+
+Section activities are meant to be finished and pushed by the end of section,
+so please make sure to push your work before section ends from now on.
+If something got in the way (GitHub trouble, being sick, anything else),
+just reply and let me know.
+
+Thanks,
+{sender}

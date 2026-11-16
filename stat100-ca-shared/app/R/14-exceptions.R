@@ -35,8 +35,31 @@ write_exceptions <- function(e) {
 }
 
 # Recompute the item's graded commits if submissions were already found.
-refresh_item_after_exception <- function(item) {
+# Sections: update the CA rosters (my-exceptions.csv) and that CA's list right
+# away (excused: off the list; extension: "not yet"); the list is re-read
+# from GitHub the next time the CA opens it.
+refresh_item_after_exception <- function(item, github = NULL) {
   if (!is.null(read_csv_quiet(admin_path("data", "snapshots", paste0(item, "-students.csv"))))) compute_snapshot(item)
+  if (grepl("^sec", item)) {
+    try(publish_section_rosters(), silent = TRUE)
+    if (!is.null(github)) try({
+      g <- section_graders()$grader[tolower(section_graders()$github) == tolower(github)][1]
+      f <- file.path(course_root(), "graders", grader_folder_name(g), "grading", item, "assignment.csv")
+      a <- read_csv_quiet(f)
+      if (!is.null(a) && nrow(a)) {
+        x <- read_exceptions(item); x <- x[tolower(x$github) == tolower(github), ]
+        k <- tolower(a$github) == tolower(github)
+        if (nrow(x) && x$type[1] == "excused") a <- a[!k, ]
+        else if (nrow(x) && x$type[1] == "extension" && !is.na(x$new_due[1]) && x$new_due[1] > now_et()) {
+          a$sha[k] <- NA; a$status[k] <- "waiting"
+          a$wait_until[k] <- format(x$new_due[1], "%Y-%m-%d %H:%M", tz = "America/New_York")
+          a$deadline[k] <- a$wait_until[k]
+        }
+        a$built_at <- ""                                   # re-read on the CA's next visit
+        readr::write_csv(a, f, na = "")
+      }
+    }, silent = TRUE)
+  }
 }
 
 add_exception <- function(item, github, type, new_due = NA, note = "", user = current_user()) {
@@ -54,7 +77,7 @@ add_exception <- function(item, github, type, new_due = NA, note = "", user = cu
   write_exceptions(e)
   log_action(acting_username(user), paste("exception", item), sprintf("%s: %s %s %s", github, type,
              if (type == "extension") format(new_due, "%Y-%m-%d %H:%M") else "", note))
-  refresh_item_after_exception(item)
+  refresh_item_after_exception(item, github)
   invisible(TRUE)
 }
 
@@ -66,7 +89,7 @@ remove_exception <- function(item, github, user = current_user()) {
     tryCatch(canvas_excuse(item, github, excuse = FALSE), error = function(err) NULL)   # un-excuse on Canvas too
   write_exceptions(e[!(e$item == item & tolower(e$github) == tolower(github)), ])
   log_action(acting_username(user), paste("exception removed", item), github)
-  refresh_item_after_exception(item)
+  refresh_item_after_exception(item, github)
   invisible(TRUE)
 }
 

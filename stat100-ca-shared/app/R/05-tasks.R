@@ -221,28 +221,73 @@ check_my_grading <- function(user) {
     left <- sum(!a$github %in% g$github)
     if (!left) return(NULL)
     due <- cal$grading_due[match(it, cal$item)]
-    task(sprintf("Grade %s: %d of %d left", it, left, nrow(a)), cal$title[match(it, cal$item)] %||% "",
+    det <- cal$title[match(it, cal$item)] %||% ""
+    if ("status" %in% names(a)) {                     # sections: work committed after section
+      lm <- read_late_marks(user$username, it)
+      n_after <- sum(a$status %in% "after section" & !a$github %in% lm$github)
+      if (n_after) det <- sprintf("%s · %d committed after section: you decide if it's late", det, n_after)
+    }
+    task(sprintf("Grade %s: %d of %d left", it, left, nrow(a)), det,
          due = due, tab = "grading", level = if (!is.na(due) && due < now_et()) "overdue" else "todo")
   })
   dplyr::bind_rows(out)
+}
+
+# CA: homework/section whose grading is due within 3 days (or overdue) but
+# which isn't on this CA's list yet — usually because the admin team hasn't
+# assigned graders. Shown as FYI so "nothing due" isn't misleading.
+check_not_assigned_yet <- function(user) {
+  if (!identical(user$role, "ca") || isTRUE(user$on_hold)) return(no_tasks())
+  cal <- read_calendar(); if (is.null(cal)) return(no_tasks())
+  soon <- cal[cal$type %in% "homework" & in_dashboard_scope(cal$item) & !is.na(cal$grading_due) &
+              !is.na(cal$student_due) & cal$student_due < now_et() &
+              cal$grading_due < now_et() + 3 * 86400 & cal$grading_due > now_et() - 3 * 86400, ]
+  mine <- tryCatch(my_items(user$username), error = function(e) character())
+  soon <- soon[!soon$item %in% mine, ]
+  if (!nrow(soon)) return(no_tasks())
+  dplyr::bind_rows(lapply(seq_len(nrow(soon)), function(i) task(
+    sprintf("%s: your grading list isn't out yet", soon$item[i]),
+    "The admin team assigns graders after the late window; your students will show up here and on the Grading tab then.",
+    due = soon$grading_due[i], level = "info", id = paste0("not-assigned-", soon$item[i]))))
+}
+
+# Section work: the CA's list builds itself the first time they open it.
+check_section_grading <- function(user) {
+  its <- tryCatch(section_items_for(user$username), error = function(e) character())
+  its <- setdiff(its, my_items(user$username))
+  if (!length(its)) return(no_tasks())
+  cal <- read_calendar()
+  dplyr::bind_rows(lapply(its, function(it) {
+    due <- cal$grading_due[match(it, cal$item)]
+    task(sprintf("Grade %s (your section)", it), "Open the Grading tab and pick it; your students' work loads automatically.",
+         due = due, tab = "grading", level = if (!is.na(due) && due < now_et() + 86400) "overdue" else "todo")
+  }))
 }
 
 # Admin: items whose deadline + late window has passed but haven't been set up.
 check_grading_setup <- function() {
   cal <- read_calendar(); if (is.null(cal)) return(no_tasks())
   late_h <- as.numeric(read_course()$late_window_hours %||% 48)   # wait this long after the deadline
-  ready <- cal[cal$type %in% c("homework", "section") & !is.na(cal$student_due) & cal$student_due + late_h * 3600 < now_et() &
-               cal$week >= (current_week() %||% 0) - 3, ]
+  # (sections aren't set up by admins: each CA's list builds itself, R/18-sections.R)
+  ready <- cal[cal$type %in% "homework" & !is.na(cal$student_due) & cal$student_due + late_h * 3600 < now_et() &
+               cal$week >= (current_week() %||% 0) - 3 & in_dashboard_scope(cal$item), ]
   out <- lapply(seq_len(nrow(ready)), function(i) {
     it <- ready$item[i]
+    # Until graders are assigned, CAs see nothing to grade, so these steps are
+    # due when grading is due, and overdue from 24 hours before that.
+    gd <- ready$grading_due[i]
+    urgent <- if (!is.na(gd) && gd - 24 * 3600 < now_et()) "overdue" else "todo"
+    why <- if (!is.na(gd)) sprintf(" CAs can't start grading %s until graders are assigned (grading due %s).", it, fmt_due(gd)) else ""
     sn <- read_snapshot(it)
-    if (is.null(sn)) return(task(sprintf("Find submissions for %s", it), "Admin tab > Weekly grading, step 1.", tab = "admin"))
+    if (is.null(sn)) return(task(sprintf("Find submissions for %s", it), paste0("Admin tab > Weekly grading, step 1.", why),
+                                 due = gd, tab = "admin", level = urgent))
     t <- list()
     nr <- sum(sn$status == "needs review")
     if (nr) t[[length(t) + 1]] <- task(sprintf("Review %d late submission(s) for %s", nr, it),
-                                        "Late work tab. Graders can't be assigned until this is done.", tab = "late")
+                                        paste0("Late & excused tab. Graders can't be assigned until this is done.", why),
+                                        due = gd, tab = "late", level = urgent)
     else if (is.null(read_assignments(it))) t[[length(t) + 1]] <- task(sprintf("Assign graders for %s", it),
-                                        "Admin tab > Weekly grading, step 2.", tab = "admin")
+                                        paste0("Admin tab > Weekly grading, step 2.", why), due = gd, tab = "admin", level = urgent)
     if (!file.exists(rubric_path(it))) t[[length(t) + 1]] <- task(sprintf("Add the rubric for %s", it),
                                         sprintf("stat100-ca-shared/rubrics/%s-rubric.csv", it), tab = "admin")
     dplyr::bind_rows(t)
@@ -348,7 +393,7 @@ tasks_for <- function(user = current_user()) {
                                        safe(check_coi), safe(check_calendar), safe(check_grading_setup), safe(check_canvas_posting, user)))
   if (is_admin(user) && tolower(user$username %||% "") %in% tolower(trimws(strsplit(read_course()$quiz_grader %||% "", ",")[[1]])))
     tl <- c(tl, list(safe(check_quizzes)))
-  if (user$role %in% c("ca", "admin")) tl <- c(tl, list(safe(check_my_grading, user), safe(check_prep, user)))
+  if (user$role %in% c("ca", "admin")) tl <- c(tl, list(safe(check_my_grading, user), safe(check_section_grading, user), safe(check_not_assigned_yet, user), safe(check_prep, user)))
   out <- dplyr::bind_rows(tl)
   if (nrow(out)) {
     out$id[is.na(out$id)] <- out$title[is.na(out$id)]
